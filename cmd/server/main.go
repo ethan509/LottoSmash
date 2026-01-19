@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/example/ProjectEXIT/internal/config"
+	"github.com/example/ProjectEXIT/internal/database"
 	"github.com/example/ProjectEXIT/internal/logger"
 	"github.com/example/ProjectEXIT/internal/scheduler"
 	"github.com/example/ProjectEXIT/internal/server"
@@ -83,10 +84,28 @@ func main() {
 		}
 	}
 
+	// database connection
+	dbCfg := cfgMgr.Config().Database
+	db, err := database.New(database.Config{
+		Host:     dbCfg.Host,
+		Port:     dbCfg.Port,
+		User:     dbCfg.User,
+		Password: dbCfg.Password,
+		DBName:   dbCfg.DBName,
+		SSLMode:  dbCfg.SSLMode,
+	})
+	if err != nil {
+		lg.Errorf("failed to connect to database: %v", err)
+	} else {
+		defer db.Close()
+		lg.Infof("connected to database")
+	}
+
 	deps := server.Dependencies{
 		ConfigMgr: cfgMgr,
 		Logger:    lg,
 		Pools:     pools,
+		DB:        db,
 	}
 	router := server.NewRouter(deps)
 

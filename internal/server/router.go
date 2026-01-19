@@ -2,10 +2,13 @@
 package server
 
 import (
+	"database/sql"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/example/ProjectEXIT/internal/auth"
 	"github.com/example/ProjectEXIT/internal/config"
 	"github.com/example/ProjectEXIT/internal/logger"
 	"github.com/example/ProjectEXIT/internal/metrics"
@@ -18,6 +21,7 @@ type Dependencies struct {
 	ConfigMgr config.Configger
 	Logger    *logger.Logger
 	Pools     *worker.Pools
+	DB        *sql.DB
 }
 
 func NewRouter(deps Dependencies) http.Handler {
@@ -46,5 +50,71 @@ func NewRouter(deps Dependencies) http.Handler {
 	r.Get("/api/v1/ping", PingHandler(deps))
 	r.Post("/api/v1/echo", EchoHandler(deps))
 
+	// auth setup
+	if deps.DB != nil {
+		authHandler := setupAuth(deps)
+		authMiddleware := setupAuthMiddleware(deps)
+
+		// public auth routes
+		r.Route("/api/auth", func(r chi.Router) {
+			r.Post("/guest", authHandler.GuestLogin)
+			r.Post("/register", authHandler.EmailRegister)
+			r.Post("/login", authHandler.EmailLogin)
+			r.Post("/refresh", authHandler.RefreshToken)
+			r.Post("/logout", authHandler.Logout)
+			r.Post("/send-code", authHandler.SendVerificationCode)
+		})
+
+		// protected auth routes
+		r.Route("/api/auth", func(r chi.Router) {
+			r.Use(authMiddleware.RequireAuth)
+			r.Get("/me", authHandler.GetMe)
+			r.Post("/link-email", authHandler.LinkEmail)
+			r.Post("/change-password", authHandler.ChangePassword)
+		})
+	}
+
 	return r
+}
+
+func setupAuth(deps Dependencies) *auth.Handler {
+	cfg := deps.ConfigMgr.Config()
+
+	jwtConfig := auth.JWTConfig{
+		SecretKey:          cfg.JWT.SecretKey,
+		AccessTokenExpiry:  time.Duration(cfg.JWT.AccessTokenExpiryMin) * time.Minute,
+		RefreshTokenExpiry: time.Duration(cfg.JWT.RefreshTokenExpiryDays) * 24 * time.Hour,
+	}
+	jwtManager := auth.NewJWTManager(jwtConfig)
+
+	repo := auth.NewRepository(deps.DB)
+
+	var emailSender auth.EmailSender
+	if cfg.SMTP.Enabled {
+		emailSender = auth.NewSMTPEmailSender(auth.SMTPConfig{
+			Host:     cfg.SMTP.Host,
+			Port:     cfg.SMTP.Port,
+			Username: cfg.SMTP.Username,
+			Password: cfg.SMTP.Password,
+			From:     cfg.SMTP.From,
+		})
+	} else {
+		emailSender = auth.NewNoopEmailSender()
+	}
+
+	service := auth.NewService(repo, jwtManager, emailSender)
+	return auth.NewHandler(service)
+}
+
+func setupAuthMiddleware(deps Dependencies) *auth.Middleware {
+	cfg := deps.ConfigMgr.Config()
+
+	jwtConfig := auth.JWTConfig{
+		SecretKey:          cfg.JWT.SecretKey,
+		AccessTokenExpiry:  time.Duration(cfg.JWT.AccessTokenExpiryMin) * time.Minute,
+		RefreshTokenExpiry: time.Duration(cfg.JWT.RefreshTokenExpiryDays) * 24 * time.Hour,
+	}
+	jwtManager := auth.NewJWTManager(jwtConfig)
+
+	return auth.NewMiddleware(jwtManager)
 }

@@ -45,12 +45,39 @@ type ConfigReloadConfig struct {
 	IntervalMinutes int  `json:"intervalMinutes"`
 }
 
+type DatabaseConfig struct {
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	User     string `json:"user"`
+	Password string `json:"password"`
+	DBName   string `json:"dbName"`
+	SSLMode  string `json:"sslMode"`
+}
+
+type JWTConfig struct {
+	SecretKey               string `json:"secretKey"`
+	AccessTokenExpiryMin    int    `json:"accessTokenExpiryMin"`
+	RefreshTokenExpiryDays  int    `json:"refreshTokenExpiryDays"`
+}
+
+type SMTPConfig struct {
+	Enabled  bool   `json:"enabled"`
+	Host     string `json:"host"`
+	Port     int    `json:"port"`
+	Username string `json:"username"`
+	Password string `json:"password"`
+	From     string `json:"from"`
+}
+
 type Config struct {
 	Server       ServerConfig       `json:"server"`
 	Logging      LoggingConfig      `json:"logging"`
 	Concurrency  ConcurrencyConfig  `json:"concurrency"`
 	Scheduler    SchedulerConfig    `json:"scheduler"`
 	ConfigReload ConfigReloadConfig `json:"configReload"`
+	Database     DatabaseConfig     `json:"database"`
+	JWT          JWTConfig          `json:"jwt"`
+	SMTP         SMTPConfig         `json:"smtp"`
 }
 
 type HotConfig struct {
