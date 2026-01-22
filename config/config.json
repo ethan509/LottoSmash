@@ -36,7 +36,7 @@
     "port": 5432,
     "user": "devuser",
     "password": "devpassword",
-    "dbName": "xxxdongxxx_db",
+    "dbName": "lottosmash_db",
     "sslMode": "disable"
   },
   "jwt": {
