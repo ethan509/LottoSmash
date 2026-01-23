@@ -25,8 +25,8 @@ type JWTManager struct {
 }
 
 type Claims struct {
-	UserID   int64  `json:"user_id"`
-	IsMember bool   `json:"is_member"`
+	UserID   int64 `json:"user_id"`
+	IsMember bool  `json:"is_member"`
 	jwt.RegisteredClaims
 }
 
@@ -38,7 +38,7 @@ func NewJWTManager(config JWTConfig) *JWTManager {
 		config.RefreshTokenExpiry = 7 * 24 * time.Hour
 	}
 	if config.Issuer == "" {
-		config.Issuer = "ProjectEXIT"
+		config.Issuer = "LottoSmash"
 	}
 	return &JWTManager{config: config}
 }

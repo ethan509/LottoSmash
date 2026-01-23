@@ -1,0 +1,33 @@
+# GitHub CODEOWNERS
+# https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# 기본 담당자
+* @ethan509
+
+# 백엔드 코드
+/cmd/** @ethan509
+/internal/** @ethan509
+/migrations/** @ethan509
+
+# 설정 파일
+/config/** @ethan509
+Makefile @ethan509
+go.mod @ethan509
+go.sum @ethan509
+
+# Docker
+/docker/** @ethan509
+Dockerfile @ethan509
+
+# 문서
+/docs/** @ethan509
+*.md @ethan509
+SETUP.md @ethan509
+STRUCTURE.md @ethan509
+
+# 스크립트
+/scripts/** @ethan509
+
+# 설정
+.gitignore @ethan509
+.vscode/** @ethan509
