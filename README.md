@@ -1,4 +1,4 @@
-# LottoSmash - Go Server Template
+# LottoSmash - by Go Server Template
 
 This is a server template project generated for LottoSmash.
 
