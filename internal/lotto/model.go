@@ -73,6 +73,28 @@ type PairStatsResponse struct {
 	LatestDrawNo int        `json:"latest_draw_no"`
 }
 
+// ConsecutiveCountStat 연번 개수별 통계
+type ConsecutiveCountStat struct {
+	ConsecutiveCount int     `json:"consecutive_count"` // 연번 개수 (0, 2, 3, 4, 5, 6)
+	DrawCount        int     `json:"draw_count"`        // 해당 연번 개수가 나온 회차 수
+	Probability      float64 `json:"probability"`       // 확률
+}
+
+// ConsecutiveExample 연번 포함 회차 예시
+type ConsecutiveExample struct {
+	DrawNo           int   `json:"draw_no"`
+	Numbers          []int `json:"numbers"`
+	ConsecutiveCount int   `json:"consecutive_count"`
+}
+
+// ConsecutiveStatsResponse 연번 패턴 통계 응답
+type ConsecutiveStatsResponse struct {
+	CountStats     []ConsecutiveCountStat `json:"count_stats"`
+	RecentExamples []ConsecutiveExample   `json:"recent_examples"`
+	TotalDraws     int                    `json:"total_draws"`
+	LatestDrawNo   int                    `json:"latest_draw_no"`
+}
+
 // DhlotteryResponse 동행복권 API 응답
 type DhlotteryResponse struct {
 	ReturnValue    string `json:"returnValue"`
