@@ -614,6 +614,11 @@ func (s *Service) GetReappearStats(ctx context.Context) ([]ReappearStat, error) 
 	return s.repo.GetAllReappearStats(ctx)
 }
 
+// GetFirstLastStats 첫번째/마지막 번호 확률 조회
+func (s *Service) GetFirstLastStats(ctx context.Context) (*FirstLastStatsResponse, error) {
+	return s.analyzer.CalculateFirstLastStats(ctx)
+}
+
 // TriggerSync 수동 동기화 (관리자용)
 func (s *Service) TriggerSync(ctx context.Context) error {
 	if err := s.FetchNewDraw(ctx); err != nil {

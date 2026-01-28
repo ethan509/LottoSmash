@@ -42,6 +42,21 @@ type ReappearStat struct {
 	Probability   float64 `json:"probability"`
 }
 
+// PositionStat 포지션별 번호 통계 (첫번째/마지막 번호)
+type PositionStat struct {
+	Number      int     `json:"number"`
+	Count       int     `json:"count"`
+	Probability float64 `json:"probability"`
+}
+
+// FirstLastStatsResponse 첫번째/마지막 번호 확률 응답
+type FirstLastStatsResponse struct {
+	FirstStats  []PositionStat `json:"first_stats"`
+	LastStats   []PositionStat `json:"last_stats"`
+	TotalDraws  int            `json:"total_draws"`
+	LatestDrawNo int           `json:"latest_draw_no"`
+}
+
 // DhlotteryResponse 동행복권 API 응답
 type DhlotteryResponse struct {
 	ReturnValue    string `json:"returnValue"`
