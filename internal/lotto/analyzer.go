@@ -277,6 +277,108 @@ func (a *Analyzer) CalculatePairStats(ctx context.Context, topN int) (*PairStats
 	}, nil
 }
 
+// CalculateConsecutiveStats 연번 패턴 통계 계산
+// 연속된 번호(예: 5-6-7)가 포함된 패턴 분석
+func (a *Analyzer) CalculateConsecutiveStats(ctx context.Context) (*ConsecutiveStatsResponse, error) {
+	draws, err := a.repo.GetAllDraws(ctx)
+	if err != nil {
+		a.log.Errorf("CalculateConsecutiveStats: failed to get all draws: %v", err)
+		return nil, err
+	}
+
+	if len(draws) == 0 {
+		return nil, nil
+	}
+
+	totalDraws := len(draws)
+
+	// 연번 개수별 카운트 (0, 2, 3, 4, 5, 6)
+	// 0: 연번 없음, 2: 2연번(예: 5-6), 3: 3연번(예: 5-6-7), ...
+	countMap := make(map[int]int)
+
+	// 최근 연번 포함 예시 (연번 2개 이상)
+	var examples []ConsecutiveExample
+
+	latestDrawNo := 0
+	for _, draw := range draws {
+		nums := draw.Numbers()
+		if draw.DrawNo > latestDrawNo {
+			latestDrawNo = draw.DrawNo
+		}
+
+		// 연번 개수 계산
+		consecutiveCount := countConsecutive(nums)
+		countMap[consecutiveCount]++
+
+		// 연번이 있으면 예시에 추가 (최근 10개만)
+		if consecutiveCount >= 2 && len(examples) < 10 {
+			examples = append(examples, ConsecutiveExample{
+				DrawNo:           draw.DrawNo,
+				Numbers:          nums,
+				ConsecutiveCount: consecutiveCount,
+			})
+		}
+	}
+
+	// 예시를 최신순으로 정렬
+	sort.Slice(examples, func(i, j int) bool {
+		return examples[i].DrawNo > examples[j].DrawNo
+	})
+	if len(examples) > 10 {
+		examples = examples[:10]
+	}
+
+	// 통계 변환
+	countStats := make([]ConsecutiveCountStat, 0)
+	for _, cnt := range []int{0, 2, 3, 4, 5, 6} {
+		drawCount := countMap[cnt]
+		prob := 0.0
+		if totalDraws > 0 {
+			prob = float64(drawCount) / float64(totalDraws)
+		}
+		countStats = append(countStats, ConsecutiveCountStat{
+			ConsecutiveCount: cnt,
+			DrawCount:        drawCount,
+			Probability:      prob,
+		})
+	}
+
+	return &ConsecutiveStatsResponse{
+		CountStats:     countStats,
+		RecentExamples: examples,
+		TotalDraws:     totalDraws,
+		LatestDrawNo:   latestDrawNo,
+	}, nil
+}
+
+// countConsecutive 6개 번호에서 최대 연속 번호 개수 계산
+func countConsecutive(nums []int) int {
+	if len(nums) < 2 {
+		return 0
+	}
+
+	// 정렬된 상태라고 가정 (Num1~Num6은 이미 정렬됨)
+	maxConsec := 1
+	currentConsec := 1
+
+	for i := 1; i < len(nums); i++ {
+		if nums[i] == nums[i-1]+1 {
+			currentConsec++
+			if currentConsec > maxConsec {
+				maxConsec = currentConsec
+			}
+		} else {
+			currentConsec = 1
+		}
+	}
+
+	// 연번이 없으면 0 반환, 있으면 최대 연속 개수 반환
+	if maxConsec == 1 {
+		return 0
+	}
+	return maxConsec
+}
+
 // RunFullAnalysis 전체 분석 실행 및 저장
 func (a *Analyzer) RunFullAnalysis(ctx context.Context) error {
 	a.log.Infof("RunFullAnalysis: starting full analysis")

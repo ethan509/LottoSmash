@@ -131,6 +131,17 @@ func (h *Handler) GetPairStats(w http.ResponseWriter, r *http.Request) {
 	h.jsonResponse(w, http.StatusOK, stats)
 }
 
+// GetConsecutiveStats GET /api/lotto/stats/consecutive
+func (h *Handler) GetConsecutiveStats(w http.ResponseWriter, r *http.Request) {
+	stats, err := h.service.GetConsecutiveStats(r.Context())
+	if err != nil {
+		h.errorResponse(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	h.jsonResponse(w, http.StatusOK, stats)
+}
+
 // TriggerSync POST /api/admin/lotto/sync
 func (h *Handler) TriggerSync(w http.ResponseWriter, r *http.Request) {
 	if err := h.service.TriggerSync(r.Context()); err != nil {

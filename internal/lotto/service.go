@@ -624,6 +624,11 @@ func (s *Service) GetPairStats(ctx context.Context, topN int) (*PairStatsRespons
 	return s.analyzer.CalculatePairStats(ctx, topN)
 }
 
+// GetConsecutiveStats 연번 패턴 통계 조회
+func (s *Service) GetConsecutiveStats(ctx context.Context) (*ConsecutiveStatsResponse, error) {
+	return s.analyzer.CalculateConsecutiveStats(ctx)
+}
+
 // TriggerSync 수동 동기화 (관리자용)
 func (s *Service) TriggerSync(ctx context.Context) error {
 	if err := s.FetchNewDraw(ctx); err != nil {
