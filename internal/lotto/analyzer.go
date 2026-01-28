@@ -130,6 +130,74 @@ func (a *Analyzer) CalculateReappearProbability(ctx context.Context) ([]Reappear
 	return stats, nil
 }
 
+// CalculateFirstLastStats 첫번째/마지막 번호 확률 계산
+// 첫번째 번호: 정렬된 6개 번호 중 가장 작은 번호 (Num1)
+// 마지막 번호: 정렬된 6개 번호 중 가장 큰 번호 (Num6)
+func (a *Analyzer) CalculateFirstLastStats(ctx context.Context) (*FirstLastStatsResponse, error) {
+	draws, err := a.repo.GetAllDraws(ctx)
+	if err != nil {
+		a.log.Errorf("CalculateFirstLastStats: failed to get all draws: %v", err)
+		return nil, err
+	}
+
+	if len(draws) == 0 {
+		return nil, nil
+	}
+
+	totalDraws := len(draws)
+
+	// 첫번째 번호(Num1) 통계
+	firstCountMap := make(map[int]int)
+	// 마지막 번호(Num6) 통계
+	lastCountMap := make(map[int]int)
+
+	latestDrawNo := 0
+	for _, draw := range draws {
+		firstCountMap[draw.Num1]++
+		lastCountMap[draw.Num6]++
+		if draw.DrawNo > latestDrawNo {
+			latestDrawNo = draw.DrawNo
+		}
+	}
+
+	// 첫번째 번호 통계 변환 (1~45 중 가능한 범위: 1~40)
+	firstStats := make([]PositionStat, 0)
+	for num := constants.MinLottoNumber; num <= constants.MaxLottoNumber-5; num++ {
+		count := firstCountMap[num]
+		prob := 0.0
+		if totalDraws > 0 {
+			prob = float64(count) / float64(totalDraws)
+		}
+		firstStats = append(firstStats, PositionStat{
+			Number:      num,
+			Count:       count,
+			Probability: prob,
+		})
+	}
+
+	// 마지막 번호 통계 변환 (1~45 중 가능한 범위: 6~45)
+	lastStats := make([]PositionStat, 0)
+	for num := constants.MinLottoNumber + 5; num <= constants.MaxLottoNumber; num++ {
+		count := lastCountMap[num]
+		prob := 0.0
+		if totalDraws > 0 {
+			prob = float64(count) / float64(totalDraws)
+		}
+		lastStats = append(lastStats, PositionStat{
+			Number:      num,
+			Count:       count,
+			Probability: prob,
+		})
+	}
+
+	return &FirstLastStatsResponse{
+		FirstStats:   firstStats,
+		LastStats:    lastStats,
+		TotalDraws:   totalDraws,
+		LatestDrawNo: latestDrawNo,
+	}, nil
+}
+
 // RunFullAnalysis 전체 분석 실행 및 저장
 func (a *Analyzer) RunFullAnalysis(ctx context.Context) error {
 	a.log.Infof("RunFullAnalysis: starting full analysis")
