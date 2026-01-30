@@ -111,7 +111,7 @@ func (s *Service) LinkEmail(ctx context.Context, userID int64, email, password, 
 		return err
 	}
 
-	if user.IsMember {
+	if user.IsMember() {
 		return ErrAlreadyMember
 	}
 
@@ -207,11 +207,38 @@ func (s *Service) GetUser(ctx context.Context, userID int64) (*UserResponse, err
 		return nil, err
 	}
 
+	tierResp := TierResponse{
+		Code:  TierGuest,
+		Name:  "게스트",
+		Level: 0,
+	}
+	if user.Tier != nil {
+		tierResp = TierResponse{
+			Code:  user.Tier.Code,
+			Name:  user.Tier.Name,
+			Level: user.Tier.Level,
+		}
+	}
+
 	return &UserResponse{
-		ID:       user.ID,
-		Email:    user.Email,
-		IsMember: user.IsMember,
+		ID:    user.ID,
+		Email: user.Email,
+		Tier:  tierResp,
 	}, nil
+}
+
+// GetAllTiers 모든 등급 조회
+func (s *Service) GetAllTiers(ctx context.Context) ([]MembershipTier, error) {
+	return s.repo.GetAllTiers(ctx)
+}
+
+// UpdateUserTier 사용자 등급 변경
+func (s *Service) UpdateUserTier(ctx context.Context, userID int64, tierCode TierCode) error {
+	tier, err := s.repo.GetTierByCode(ctx, tierCode)
+	if err != nil {
+		return err
+	}
+	return s.repo.UpdateUserTier(ctx, userID, tier.ID)
 }
 
 func (s *Service) generateTokens(ctx context.Context, user *User) (*TokenResponse, error) {
