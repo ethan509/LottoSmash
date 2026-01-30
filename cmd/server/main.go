@@ -108,6 +108,19 @@ func main() {
 	} else {
 		defer db.Close()
 		lg.Infof("connected to database")
+
+		// auto migration
+		if dbCfg.AutoMigrate {
+			migrationsPath := cfgMgr.ResolvePath("migrations")
+			applied, err := database.RunMigrations(db, migrationsPath)
+			if err != nil {
+				lg.Errorf("failed to run migrations: %v", err)
+			} else if applied > 0 {
+				lg.Infof("applied %d migration(s)", applied)
+			} else {
+				lg.Infof("database schema is up to date")
+			}
+		}
 	}
 
 	// lotto service initialization

@@ -102,6 +102,111 @@ func (h *Handler) GetReappearStats(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// GetFirstLastStats GET /api/lotto/stats/first-last
+func (h *Handler) GetFirstLastStats(w http.ResponseWriter, r *http.Request) {
+	stats, err := h.service.GetFirstLastStats(r.Context())
+	if err != nil {
+		h.errorResponse(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	h.jsonResponse(w, http.StatusOK, stats)
+}
+
+// GetPairStats GET /api/lotto/stats/pairs?top=20
+func (h *Handler) GetPairStats(w http.ResponseWriter, r *http.Request) {
+	topN := 20
+	if t := r.URL.Query().Get("top"); t != "" {
+		if v, err := strconv.Atoi(t); err == nil && v > 0 && v <= 100 {
+			topN = v
+		}
+	}
+
+	stats, err := h.service.GetPairStats(r.Context(), topN)
+	if err != nil {
+		h.errorResponse(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	h.jsonResponse(w, http.StatusOK, stats)
+}
+
+// GetConsecutiveStats GET /api/lotto/stats/consecutive
+func (h *Handler) GetConsecutiveStats(w http.ResponseWriter, r *http.Request) {
+	stats, err := h.service.GetConsecutiveStats(r.Context())
+	if err != nil {
+		h.errorResponse(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	h.jsonResponse(w, http.StatusOK, stats)
+}
+
+// GetRatioStats GET /api/lotto/stats/ratio
+func (h *Handler) GetRatioStats(w http.ResponseWriter, r *http.Request) {
+	stats, err := h.service.GetRatioStats(r.Context())
+	if err != nil {
+		h.errorResponse(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	h.jsonResponse(w, http.StatusOK, stats)
+}
+
+// GetColorStats GET /api/lotto/stats/colors?top=20
+func (h *Handler) GetColorStats(w http.ResponseWriter, r *http.Request) {
+	topN := 20
+	if t := r.URL.Query().Get("top"); t != "" {
+		if v, err := strconv.Atoi(t); err == nil && v > 0 && v <= 100 {
+			topN = v
+		}
+	}
+
+	stats, err := h.service.GetColorStats(r.Context(), topN)
+	if err != nil {
+		h.errorResponse(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	h.jsonResponse(w, http.StatusOK, stats)
+}
+
+// GetRowColStats GET /api/lotto/stats/grid?top=20
+func (h *Handler) GetRowColStats(w http.ResponseWriter, r *http.Request) {
+	topN := 20
+	if t := r.URL.Query().Get("top"); t != "" {
+		if v, err := strconv.Atoi(t); err == nil && v > 0 && v <= 100 {
+			topN = v
+		}
+	}
+
+	stats, err := h.service.GetRowColStats(r.Context(), topN)
+	if err != nil {
+		h.errorResponse(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	h.jsonResponse(w, http.StatusOK, stats)
+}
+
+// GetBayesianStats GET /api/lotto/stats/bayesian?window=50
+func (h *Handler) GetBayesianStats(w http.ResponseWriter, r *http.Request) {
+	windowSize := 50
+	if w := r.URL.Query().Get("window"); w != "" {
+		if v, err := strconv.Atoi(w); err == nil && v > 0 && v <= 500 {
+			windowSize = v
+		}
+	}
+
+	stats, err := h.service.GetBayesianStats(r.Context(), windowSize)
+	if err != nil {
+		h.errorResponse(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	h.jsonResponse(w, http.StatusOK, stats)
+}
+
 // TriggerSync POST /api/admin/lotto/sync
 func (h *Handler) TriggerSync(w http.ResponseWriter, r *http.Request) {
 	if err := h.service.TriggerSync(r.Context()); err != nil {

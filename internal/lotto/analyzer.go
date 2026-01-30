@@ -2,6 +2,8 @@ package lotto
 
 import (
 	"context"
+	"fmt"
+	"sort"
 
 	"github.com/example/LottoSmash/internal/constants"
 	"github.com/example/LottoSmash/internal/logger"
@@ -130,6 +132,552 @@ func (a *Analyzer) CalculateReappearProbability(ctx context.Context) ([]Reappear
 	return stats, nil
 }
 
+// CalculateFirstLastStats 첫번째/마지막 번호 확률 계산
+// 첫번째 번호: 정렬된 6개 번호 중 가장 작은 번호 (Num1)
+// 마지막 번호: 정렬된 6개 번호 중 가장 큰 번호 (Num6)
+func (a *Analyzer) CalculateFirstLastStats(ctx context.Context) (*FirstLastStatsResponse, error) {
+	draws, err := a.repo.GetAllDraws(ctx)
+	if err != nil {
+		a.log.Errorf("CalculateFirstLastStats: failed to get all draws: %v", err)
+		return nil, err
+	}
+
+	if len(draws) == 0 {
+		return nil, nil
+	}
+
+	totalDraws := len(draws)
+
+	// 첫번째 번호(Num1) 통계
+	firstCountMap := make(map[int]int)
+	// 마지막 번호(Num6) 통계
+	lastCountMap := make(map[int]int)
+
+	latestDrawNo := 0
+	for _, draw := range draws {
+		firstCountMap[draw.Num1]++
+		lastCountMap[draw.Num6]++
+		if draw.DrawNo > latestDrawNo {
+			latestDrawNo = draw.DrawNo
+		}
+	}
+
+	// 첫번째 번호 통계 변환 (1~45 중 가능한 범위: 1~40)
+	firstStats := make([]PositionStat, 0)
+	for num := constants.MinLottoNumber; num <= constants.MaxLottoNumber-5; num++ {
+		count := firstCountMap[num]
+		prob := 0.0
+		if totalDraws > 0 {
+			prob = float64(count) / float64(totalDraws)
+		}
+		firstStats = append(firstStats, PositionStat{
+			Number:      num,
+			Count:       count,
+			Probability: prob,
+		})
+	}
+
+	// 마지막 번호 통계 변환 (1~45 중 가능한 범위: 6~45)
+	lastStats := make([]PositionStat, 0)
+	for num := constants.MinLottoNumber + 5; num <= constants.MaxLottoNumber; num++ {
+		count := lastCountMap[num]
+		prob := 0.0
+		if totalDraws > 0 {
+			prob = float64(count) / float64(totalDraws)
+		}
+		lastStats = append(lastStats, PositionStat{
+			Number:      num,
+			Count:       count,
+			Probability: prob,
+		})
+	}
+
+	return &FirstLastStatsResponse{
+		FirstStats:   firstStats,
+		LastStats:    lastStats,
+		TotalDraws:   totalDraws,
+		LatestDrawNo: latestDrawNo,
+	}, nil
+}
+
+// CalculatePairStats 번호 쌍 동반 출현 통계 계산
+// 두 번호가 같은 회차에 함께 나온 횟수를 계산
+func (a *Analyzer) CalculatePairStats(ctx context.Context, topN int) (*PairStatsResponse, error) {
+	draws, err := a.repo.GetAllDraws(ctx)
+	if err != nil {
+		a.log.Errorf("CalculatePairStats: failed to get all draws: %v", err)
+		return nil, err
+	}
+
+	if len(draws) == 0 {
+		return nil, nil
+	}
+
+	totalDraws := len(draws)
+
+	// 번호 쌍별 동반 출현 횟수 계산
+	// key: "작은번호-큰번호" 형태로 저장
+	pairCountMap := make(map[[2]int]int)
+
+	latestDrawNo := 0
+	for _, draw := range draws {
+		nums := draw.Numbers()
+		if draw.DrawNo > latestDrawNo {
+			latestDrawNo = draw.DrawNo
+		}
+
+		// 6개 번호 중 2개씩 조합 (6C2 = 15개)
+		for i := 0; i < len(nums); i++ {
+			for j := i + 1; j < len(nums); j++ {
+				// 항상 작은 번호가 먼저 오도록
+				n1, n2 := nums[i], nums[j]
+				if n1 > n2 {
+					n1, n2 = n2, n1
+				}
+				pairCountMap[[2]int{n1, n2}]++
+			}
+		}
+	}
+
+	// PairStat 슬라이스로 변환
+	allPairs := make([]PairStat, 0, len(pairCountMap))
+	for pair, count := range pairCountMap {
+		prob := float64(count) / float64(totalDraws)
+		allPairs = append(allPairs, PairStat{
+			Number1:     pair[0],
+			Number2:     pair[1],
+			Count:       count,
+			Probability: prob,
+		})
+	}
+
+	// 출현 횟수로 정렬
+	sort.Slice(allPairs, func(i, j int) bool {
+		return allPairs[i].Count > allPairs[j].Count
+	})
+
+	// 상위 N개, 하위 N개 추출
+	if topN > len(allPairs) {
+		topN = len(allPairs)
+	}
+
+	topPairs := allPairs[:topN]
+	bottomPairs := make([]PairStat, topN)
+	copy(bottomPairs, allPairs[len(allPairs)-topN:])
+
+	// 하위는 오름차순으로 정렬 (가장 적게 나온 것부터)
+	sort.Slice(bottomPairs, func(i, j int) bool {
+		return bottomPairs[i].Count < bottomPairs[j].Count
+	})
+
+	return &PairStatsResponse{
+		TopPairs:     topPairs,
+		BottomPairs:  bottomPairs,
+		TotalDraws:   totalDraws,
+		LatestDrawNo: latestDrawNo,
+	}, nil
+}
+
+// CalculateConsecutiveStats 연번 패턴 통계 계산
+// 연속된 번호(예: 5-6-7)가 포함된 패턴 분석
+func (a *Analyzer) CalculateConsecutiveStats(ctx context.Context) (*ConsecutiveStatsResponse, error) {
+	draws, err := a.repo.GetAllDraws(ctx)
+	if err != nil {
+		a.log.Errorf("CalculateConsecutiveStats: failed to get all draws: %v", err)
+		return nil, err
+	}
+
+	if len(draws) == 0 {
+		return nil, nil
+	}
+
+	totalDraws := len(draws)
+
+	// 연번 개수별 카운트 (0, 2, 3, 4, 5, 6)
+	// 0: 연번 없음, 2: 2연번(예: 5-6), 3: 3연번(예: 5-6-7), ...
+	countMap := make(map[int]int)
+
+	// 최근 연번 포함 예시 (연번 2개 이상)
+	var examples []ConsecutiveExample
+
+	latestDrawNo := 0
+	for _, draw := range draws {
+		nums := draw.Numbers()
+		if draw.DrawNo > latestDrawNo {
+			latestDrawNo = draw.DrawNo
+		}
+
+		// 연번 개수 계산
+		consecutiveCount := countConsecutive(nums)
+		countMap[consecutiveCount]++
+
+		// 연번이 있으면 예시에 추가 (최근 10개만)
+		if consecutiveCount >= 2 && len(examples) < 10 {
+			examples = append(examples, ConsecutiveExample{
+				DrawNo:           draw.DrawNo,
+				Numbers:          nums,
+				ConsecutiveCount: consecutiveCount,
+			})
+		}
+	}
+
+	// 예시를 최신순으로 정렬
+	sort.Slice(examples, func(i, j int) bool {
+		return examples[i].DrawNo > examples[j].DrawNo
+	})
+	if len(examples) > 10 {
+		examples = examples[:10]
+	}
+
+	// 통계 변환
+	countStats := make([]ConsecutiveCountStat, 0)
+	for _, cnt := range []int{0, 2, 3, 4, 5, 6} {
+		drawCount := countMap[cnt]
+		prob := 0.0
+		if totalDraws > 0 {
+			prob = float64(drawCount) / float64(totalDraws)
+		}
+		countStats = append(countStats, ConsecutiveCountStat{
+			ConsecutiveCount: cnt,
+			DrawCount:        drawCount,
+			Probability:      prob,
+		})
+	}
+
+	return &ConsecutiveStatsResponse{
+		CountStats:     countStats,
+		RecentExamples: examples,
+		TotalDraws:     totalDraws,
+		LatestDrawNo:   latestDrawNo,
+	}, nil
+}
+
+// countConsecutive 6개 번호에서 최대 연속 번호 개수 계산
+func countConsecutive(nums []int) int {
+	if len(nums) < 2 {
+		return 0
+	}
+
+	// 정렬된 상태라고 가정 (Num1~Num6은 이미 정렬됨)
+	maxConsec := 1
+	currentConsec := 1
+
+	for i := 1; i < len(nums); i++ {
+		if nums[i] == nums[i-1]+1 {
+			currentConsec++
+			if currentConsec > maxConsec {
+				maxConsec = currentConsec
+			}
+		} else {
+			currentConsec = 1
+		}
+	}
+
+	// 연번이 없으면 0 반환, 있으면 최대 연속 개수 반환
+	if maxConsec == 1 {
+		return 0
+	}
+	return maxConsec
+}
+
+// CalculateRatioStats 홀짝/고저 비율 통계 계산
+func (a *Analyzer) CalculateRatioStats(ctx context.Context) (*RatioStatsResponse, error) {
+	draws, err := a.repo.GetAllDraws(ctx)
+	if err != nil {
+		a.log.Errorf("CalculateRatioStats: failed to get all draws: %v", err)
+		return nil, err
+	}
+
+	if len(draws) == 0 {
+		return nil, nil
+	}
+
+	totalDraws := len(draws)
+
+	// 홀짝 비율별 카운트 (key: "홀:짝")
+	oddEvenMap := make(map[string]int)
+	// 고저 비율별 카운트 (key: "고:저", 고=23~45, 저=1~22)
+	highLowMap := make(map[string]int)
+
+	latestDrawNo := 0
+	for _, draw := range draws {
+		nums := draw.Numbers()
+		if draw.DrawNo > latestDrawNo {
+			latestDrawNo = draw.DrawNo
+		}
+
+		// 홀짝 계산
+		oddCount := 0
+		for _, n := range nums {
+			if n%2 == 1 {
+				oddCount++
+			}
+		}
+		evenCount := 6 - oddCount
+		oddEvenKey := fmt.Sprintf("%d:%d", oddCount, evenCount)
+		oddEvenMap[oddEvenKey]++
+
+		// 고저 계산 (고=23~45, 저=1~22)
+		highCount := 0
+		for _, n := range nums {
+			if n >= 23 {
+				highCount++
+			}
+		}
+		lowCount := 6 - highCount
+		highLowKey := fmt.Sprintf("%d:%d", highCount, lowCount)
+		highLowMap[highLowKey]++
+	}
+
+	// 홀짝 통계 변환 (정렬: 6:0, 5:1, 4:2, 3:3, 2:4, 1:5, 0:6)
+	oddEvenStats := make([]RatioStat, 0)
+	for odd := 6; odd >= 0; odd-- {
+		even := 6 - odd
+		key := fmt.Sprintf("%d:%d", odd, even)
+		count := oddEvenMap[key]
+		prob := 0.0
+		if totalDraws > 0 {
+			prob = float64(count) / float64(totalDraws)
+		}
+		oddEvenStats = append(oddEvenStats, RatioStat{
+			Ratio:       key,
+			Count:       count,
+			Probability: prob,
+		})
+	}
+
+	// 고저 통계 변환 (정렬: 6:0, 5:1, 4:2, 3:3, 2:4, 1:5, 0:6)
+	highLowStats := make([]RatioStat, 0)
+	for high := 6; high >= 0; high-- {
+		low := 6 - high
+		key := fmt.Sprintf("%d:%d", high, low)
+		count := highLowMap[key]
+		prob := 0.0
+		if totalDraws > 0 {
+			prob = float64(count) / float64(totalDraws)
+		}
+		highLowStats = append(highLowStats, RatioStat{
+			Ratio:       key,
+			Count:       count,
+			Probability: prob,
+		})
+	}
+
+	return &RatioStatsResponse{
+		OddEvenStats: oddEvenStats,
+		HighLowStats: highLowStats,
+		TotalDraws:   totalDraws,
+		LatestDrawNo: latestDrawNo,
+	}, nil
+}
+
+// getColorForNumber 번호에 해당하는 색상 반환
+// 한국 로또 공식 색상: 1~10(Y노랑), 11~20(B파랑), 21~30(R빨강), 31~40(G회색), 41~45(E초록)
+func getColorForNumber(num int) string {
+	switch {
+	case num >= 1 && num <= 10:
+		return "Y" // Yellow 노랑
+	case num >= 11 && num <= 20:
+		return "B" // Blue 파랑
+	case num >= 21 && num <= 30:
+		return "R" // Red 빨강
+	case num >= 31 && num <= 40:
+		return "G" // Gray 회색
+	case num >= 41 && num <= 45:
+		return "E" // grEen 초록
+	default:
+		return "?"
+	}
+}
+
+// CalculateColorStats 색상 패턴 통계 계산
+func (a *Analyzer) CalculateColorStats(ctx context.Context, topN int) (*ColorStatsResponse, error) {
+	draws, err := a.repo.GetAllDraws(ctx)
+	if err != nil {
+		a.log.Errorf("CalculateColorStats: failed to get all draws: %v", err)
+		return nil, err
+	}
+
+	if len(draws) == 0 {
+		return nil, nil
+	}
+
+	totalDraws := len(draws)
+
+	// 색상 패턴별 카운트
+	patternMap := make(map[string]int)
+	// 각 색상별 총 출현 횟수
+	colorCounts := map[string]int{"Y": 0, "B": 0, "R": 0, "G": 0, "E": 0}
+
+	latestDrawNo := 0
+	for _, draw := range draws {
+		nums := draw.Numbers()
+		if draw.DrawNo > latestDrawNo {
+			latestDrawNo = draw.DrawNo
+		}
+
+		// 색상 패턴 생성
+		var pattern string
+		for _, num := range nums {
+			color := getColorForNumber(num)
+			pattern += color
+			colorCounts[color]++
+		}
+		patternMap[pattern]++
+	}
+
+	// 패턴을 슬라이스로 변환하고 정렬
+	patterns := make([]ColorPatternStat, 0, len(patternMap))
+	for pattern, count := range patternMap {
+		prob := float64(count) / float64(totalDraws)
+		patterns = append(patterns, ColorPatternStat{
+			Pattern:     pattern,
+			Count:       count,
+			Probability: prob,
+		})
+	}
+
+	sort.Slice(patterns, func(i, j int) bool {
+		return patterns[i].Count > patterns[j].Count
+	})
+
+	if topN > len(patterns) {
+		topN = len(patterns)
+	}
+
+	return &ColorStatsResponse{
+		TopPatterns:  patterns[:topN],
+		ColorCounts:  colorCounts,
+		TotalDraws:   totalDraws,
+		LatestDrawNo: latestDrawNo,
+	}, nil
+}
+
+// getRowCol 번호의 7x7 격자 좌표 반환 (1-indexed)
+func getRowCol(num int) (row, col int) {
+	row = (num-1)/7 + 1
+	col = (num-1)%7 + 1
+	return
+}
+
+// CalculateRowColStats 행/열 분포 통계 계산 (7x7 격자 기준)
+func (a *Analyzer) CalculateRowColStats(ctx context.Context, topN int) (*RowColStatsResponse, error) {
+	draws, err := a.repo.GetAllDraws(ctx)
+	if err != nil {
+		a.log.Errorf("CalculateRowColStats: failed to get all draws: %v", err)
+		return nil, err
+	}
+
+	if len(draws) == 0 {
+		return nil, nil
+	}
+
+	totalDraws := len(draws)
+
+	// 각 행/열별 총 출현 횟수
+	rowCounts := make([]int, 8) // 1~7 사용 (0 무시)
+	colCounts := make([]int, 8)
+
+	// 행/열 분포 패턴별 카운트
+	rowPatternMap := make(map[string]int)
+	colPatternMap := make(map[string]int)
+
+	latestDrawNo := 0
+	for _, draw := range draws {
+		nums := draw.Numbers()
+		if draw.DrawNo > latestDrawNo {
+			latestDrawNo = draw.DrawNo
+		}
+
+		// 이번 회차의 행/열 분포
+		rowDist := make([]int, 8)
+		colDist := make([]int, 8)
+
+		for _, num := range nums {
+			row, col := getRowCol(num)
+			rowCounts[row]++
+			colCounts[col]++
+			rowDist[row]++
+			colDist[col]++
+		}
+
+		// 분포 패턴 문자열 생성
+		rowPattern := fmt.Sprintf("%d:%d:%d:%d:%d:%d:%d", rowDist[1], rowDist[2], rowDist[3], rowDist[4], rowDist[5], rowDist[6], rowDist[7])
+		colPattern := fmt.Sprintf("%d:%d:%d:%d:%d:%d:%d", colDist[1], colDist[2], colDist[3], colDist[4], colDist[5], colDist[6], colDist[7])
+
+		rowPatternMap[rowPattern]++
+		colPatternMap[colPattern]++
+	}
+
+	// 행별 통계
+	rowStats := make([]LineStat, 0, 7)
+	for i := 1; i <= 7; i++ {
+		prob := float64(rowCounts[i]) / float64(totalDraws*6) // 6개 번호 * 총 회차
+		rowStats = append(rowStats, LineStat{
+			Line:        i,
+			Count:       rowCounts[i],
+			Probability: prob,
+		})
+	}
+
+	// 열별 통계
+	colStats := make([]LineStat, 0, 7)
+	for i := 1; i <= 7; i++ {
+		prob := float64(colCounts[i]) / float64(totalDraws*6)
+		colStats = append(colStats, LineStat{
+			Line:        i,
+			Count:       colCounts[i],
+			Probability: prob,
+		})
+	}
+
+	// 행 분포 패턴 정렬
+	rowPatterns := make([]LineDistStat, 0, len(rowPatternMap))
+	for pattern, count := range rowPatternMap {
+		prob := float64(count) / float64(totalDraws)
+		rowPatterns = append(rowPatterns, LineDistStat{
+			Distribution: pattern,
+			Count:        count,
+			Probability:  prob,
+		})
+	}
+	sort.Slice(rowPatterns, func(i, j int) bool {
+		return rowPatterns[i].Count > rowPatterns[j].Count
+	})
+
+	// 열 분포 패턴 정렬
+	colPatterns := make([]LineDistStat, 0, len(colPatternMap))
+	for pattern, count := range colPatternMap {
+		prob := float64(count) / float64(totalDraws)
+		colPatterns = append(colPatterns, LineDistStat{
+			Distribution: pattern,
+			Count:        count,
+			Probability:  prob,
+		})
+	}
+	sort.Slice(colPatterns, func(i, j int) bool {
+		return colPatterns[i].Count > colPatterns[j].Count
+	})
+
+	if topN > len(rowPatterns) {
+		topN = len(rowPatterns)
+	}
+	topRowN := topN
+	if topN > len(colPatterns) {
+		topN = len(colPatterns)
+	}
+	topColN := topN
+
+	return &RowColStatsResponse{
+		RowStats:       rowStats,
+		ColStats:       colStats,
+		TopRowPatterns: rowPatterns[:topRowN],
+		TopColPatterns: colPatterns[:topColN],
+		TotalDraws:     totalDraws,
+		LatestDrawNo:   latestDrawNo,
+	}, nil
+}
+
 // RunFullAnalysis 전체 분석 실행 및 저장
 func (a *Analyzer) RunFullAnalysis(ctx context.Context) error {
 	a.log.Infof("RunFullAnalysis: starting full analysis")
@@ -162,4 +710,169 @@ func (a *Analyzer) RunFullAnalysis(ctx context.Context) error {
 
 	a.log.Infof("RunFullAnalysis: completed successfully")
 	return nil
+}
+
+// CalculateBayesianStats 베이지안 추론 기반 번호별 확률 계산
+// Prior: P(θ) = 1/45 (균등 분포)
+// Likelihood: 최근 windowSize 회차에서의 출현 빈도
+// Posterior: P(θ|D) ∝ P(D|θ)P(θ) (Beta-Binomial 모델)
+func (a *Analyzer) CalculateBayesianStats(ctx context.Context, windowSize int) (*BayesianStatsResponse, error) {
+	draws, err := a.repo.GetAllDraws(ctx)
+	if err != nil {
+		a.log.Errorf("CalculateBayesianStats: failed to get all draws: %v", err)
+		return nil, err
+	}
+
+	if len(draws) == 0 {
+		return nil, nil
+	}
+
+	totalDraws := len(draws)
+	if windowSize <= 0 || windowSize > totalDraws {
+		windowSize = 50 // 기본값: 최근 50회차
+	}
+
+	// 회차 번호 기준 내림차순 정렬 (최신 회차가 먼저)
+	sort.Slice(draws, func(i, j int) bool {
+		return draws[i].DrawNo > draws[j].DrawNo
+	})
+
+	latestDrawNo := draws[0].DrawNo
+
+	// 최근 windowSize 회차만 사용
+	recentDraws := draws
+	if len(draws) > windowSize {
+		recentDraws = draws[:windowSize]
+	}
+	actualWindow := len(recentDraws)
+
+	// 상수
+	const totalNumbers = 45
+	const numbersPerDraw = 6
+	prior := 1.0 / float64(totalNumbers) // P(θ) = 1/45
+
+	// 각 회차에서 6개 번호가 나오므로, 전체 시행 횟수
+	totalTrials := actualWindow * numbersPerDraw
+	// 각 번호의 기대 출현 횟수 (균등 분포 가정)
+	expectedCount := float64(totalTrials) / float64(totalNumbers)
+
+	// 번호별 출현 횟수 카운트
+	recentCountMap := make(map[int]int)
+	lastAppearMap := make(map[int]int)
+	for i := 1; i <= totalNumbers; i++ {
+		recentCountMap[i] = 0
+		lastAppearMap[i] = 0
+	}
+
+	for _, draw := range recentDraws {
+		for _, num := range draw.Numbers() {
+			recentCountMap[num]++
+			if lastAppearMap[num] == 0 || draw.DrawNo > lastAppearMap[num] {
+				lastAppearMap[num] = draw.DrawNo
+			}
+		}
+	}
+
+	// 전체 데이터에서 마지막 출현 회차 계산 (최근 윈도우 밖도 포함)
+	for _, draw := range draws {
+		for _, num := range draw.Numbers() {
+			if draw.DrawNo > lastAppearMap[num] {
+				lastAppearMap[num] = draw.DrawNo
+			}
+		}
+	}
+
+	// Beta-Binomial 모델로 Posterior 계산
+	// Prior: Beta(α, β) where α = β = 1 (uniform)
+	// Posterior: Beta(α + k, β + n - k)
+	// Posterior mean = (α + k) / (α + β + n)
+	alpha := 1.0
+	beta := 1.0
+	n := float64(totalTrials)
+
+	stats := make([]BayesianNumberStat, 0, totalNumbers)
+	var sumPosterior float64
+
+	// 먼저 모든 번호의 posterior를 계산하고 합계를 구함
+	posteriors := make([]float64, totalNumbers+1)
+	for num := 1; num <= totalNumbers; num++ {
+		k := float64(recentCountMap[num])
+		// Posterior mean (Beta distribution)
+		posteriors[num] = (alpha + k) / (alpha + beta + n)
+		sumPosterior += posteriors[num]
+	}
+
+	// 정규화 및 통계 생성
+	for num := 1; num <= totalNumbers; num++ {
+		k := float64(recentCountMap[num])
+		recentCount := recentCountMap[num]
+
+		// Likelihood: 관측된 빈도 (최근 윈도우에서)
+		likelihood := k / n
+
+		// Normalized posterior (합이 1이 되도록)
+		posterior := posteriors[num] / sumPosterior
+
+		// 편차 계산
+		deviation := k - expectedCount
+
+		// Hot/Cold 상태 결정
+		// 기대값 대비 +20% 이상이면 HOT, -20% 이하면 COLD
+		var status string
+		deviationRatio := deviation / expectedCount
+		if deviationRatio > 0.2 {
+			status = "HOT"
+		} else if deviationRatio < -0.2 {
+			status = "COLD"
+		} else {
+			status = "NEUTRAL"
+		}
+
+		// 마지막 출현 후 경과 회차
+		gapSinceLast := latestDrawNo - lastAppearMap[num]
+
+		stats = append(stats, BayesianNumberStat{
+			Number:           num,
+			Prior:            prior,
+			Likelihood:       likelihood,
+			Posterior:        posterior,
+			RecentCount:      recentCount,
+			ExpectedCount:    expectedCount,
+			Deviation:        deviation,
+			Status:           status,
+			LastAppearDrawNo: lastAppearMap[num],
+			GapSinceLastDraw: gapSinceLast,
+		})
+	}
+
+	// Posterior 기준 내림차순 정렬
+	sort.Slice(stats, func(i, j int) bool {
+		return stats[i].Posterior > stats[j].Posterior
+	})
+
+	// Hot/Cold 번호 추출 (상위/하위 10개)
+	topN := 10
+	if topN > len(stats) {
+		topN = len(stats)
+	}
+
+	hotNumbers := make([]BayesianNumberStat, 0, topN)
+	coldNumbers := make([]BayesianNumberStat, 0, topN)
+
+	for i := 0; i < topN; i++ {
+		hotNumbers = append(hotNumbers, stats[i])
+	}
+
+	for i := len(stats) - 1; i >= len(stats)-topN && i >= 0; i-- {
+		coldNumbers = append(coldNumbers, stats[i])
+	}
+
+	return &BayesianStatsResponse{
+		Numbers:      stats,
+		HotNumbers:   hotNumbers,
+		ColdNumbers:  coldNumbers,
+		WindowSize:   actualWindow,
+		TotalDraws:   totalDraws,
+		LatestDrawNo: latestDrawNo,
+	}, nil
 }

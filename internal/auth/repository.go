@@ -11,6 +11,7 @@ var (
 	ErrUserNotFound  = errors.New("user not found")
 	ErrTokenNotFound = errors.New("token not found")
 	ErrTokenExpired  = errors.New("token expired")
+	ErrTierNotFound  = errors.New("tier not found")
 )
 
 type Repository struct {
@@ -25,14 +26,14 @@ func NewRepository(db *sql.DB) *Repository {
 
 func (r *Repository) CreateGuestUser(ctx context.Context, deviceID string) (*User, error) {
 	query := `
-		INSERT INTO users (device_id, is_member, created_at, updated_at)
-		VALUES ($1, FALSE, NOW(), NOW())
-		RETURNING id, device_id, email, password_hash, is_member, created_at, updated_at
+		INSERT INTO users (device_id, tier_id, created_at, updated_at)
+		VALUES ($1, 1, NOW(), NOW())
+		RETURNING id, device_id, email, password_hash, tier_id, created_at, updated_at
 	`
 	user := &User{}
 	err := r.db.QueryRowContext(ctx, query, deviceID).Scan(
 		&user.ID, &user.DeviceID, &user.Email, &user.PasswordHash,
-		&user.IsMember, &user.CreatedAt, &user.UpdatedAt,
+		&user.TierID, &user.CreatedAt, &user.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -42,14 +43,14 @@ func (r *Repository) CreateGuestUser(ctx context.Context, deviceID string) (*Use
 
 func (r *Repository) CreateMemberUser(ctx context.Context, email, passwordHash string) (*User, error) {
 	query := `
-		INSERT INTO users (email, password_hash, is_member, created_at, updated_at)
-		VALUES ($1, $2, TRUE, NOW(), NOW())
-		RETURNING id, device_id, email, password_hash, is_member, created_at, updated_at
+		INSERT INTO users (email, password_hash, tier_id, created_at, updated_at)
+		VALUES ($1, $2, 2, NOW(), NOW())
+		RETURNING id, device_id, email, password_hash, tier_id, created_at, updated_at
 	`
 	user := &User{}
 	err := r.db.QueryRowContext(ctx, query, email, passwordHash).Scan(
 		&user.ID, &user.DeviceID, &user.Email, &user.PasswordHash,
-		&user.IsMember, &user.CreatedAt, &user.UpdatedAt,
+		&user.TierID, &user.CreatedAt, &user.UpdatedAt,
 	)
 	if err != nil {
 		return nil, err
@@ -59,13 +60,18 @@ func (r *Repository) CreateMemberUser(ctx context.Context, email, passwordHash s
 
 func (r *Repository) GetUserByID(ctx context.Context, id int64) (*User, error) {
 	query := `
-		SELECT id, device_id, email, password_hash, is_member, created_at, updated_at
-		FROM users WHERE id = $1
+		SELECT u.id, u.device_id, u.email, u.password_hash, u.tier_id, u.created_at, u.updated_at,
+		       t.id, t.code, t.name, t.level, t.description, t.is_active
+		FROM users u
+		JOIN membership_tiers t ON u.tier_id = t.id
+		WHERE u.id = $1
 	`
 	user := &User{}
+	tier := &MembershipTier{}
 	err := r.db.QueryRowContext(ctx, query, id).Scan(
 		&user.ID, &user.DeviceID, &user.Email, &user.PasswordHash,
-		&user.IsMember, &user.CreatedAt, &user.UpdatedAt,
+		&user.TierID, &user.CreatedAt, &user.UpdatedAt,
+		&tier.ID, &tier.Code, &tier.Name, &tier.Level, &tier.Description, &tier.IsActive,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrUserNotFound
@@ -73,18 +79,24 @@ func (r *Repository) GetUserByID(ctx context.Context, id int64) (*User, error) {
 	if err != nil {
 		return nil, err
 	}
+	user.Tier = tier
 	return user, nil
 }
 
 func (r *Repository) GetUserByDeviceID(ctx context.Context, deviceID string) (*User, error) {
 	query := `
-		SELECT id, device_id, email, password_hash, is_member, created_at, updated_at
-		FROM users WHERE device_id = $1
+		SELECT u.id, u.device_id, u.email, u.password_hash, u.tier_id, u.created_at, u.updated_at,
+		       t.id, t.code, t.name, t.level, t.description, t.is_active
+		FROM users u
+		JOIN membership_tiers t ON u.tier_id = t.id
+		WHERE u.device_id = $1
 	`
 	user := &User{}
+	tier := &MembershipTier{}
 	err := r.db.QueryRowContext(ctx, query, deviceID).Scan(
 		&user.ID, &user.DeviceID, &user.Email, &user.PasswordHash,
-		&user.IsMember, &user.CreatedAt, &user.UpdatedAt,
+		&user.TierID, &user.CreatedAt, &user.UpdatedAt,
+		&tier.ID, &tier.Code, &tier.Name, &tier.Level, &tier.Description, &tier.IsActive,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrUserNotFound
@@ -92,18 +104,24 @@ func (r *Repository) GetUserByDeviceID(ctx context.Context, deviceID string) (*U
 	if err != nil {
 		return nil, err
 	}
+	user.Tier = tier
 	return user, nil
 }
 
 func (r *Repository) GetUserByEmail(ctx context.Context, email string) (*User, error) {
 	query := `
-		SELECT id, device_id, email, password_hash, is_member, created_at, updated_at
-		FROM users WHERE email = $1
+		SELECT u.id, u.device_id, u.email, u.password_hash, u.tier_id, u.created_at, u.updated_at,
+		       t.id, t.code, t.name, t.level, t.description, t.is_active
+		FROM users u
+		JOIN membership_tiers t ON u.tier_id = t.id
+		WHERE u.email = $1
 	`
 	user := &User{}
+	tier := &MembershipTier{}
 	err := r.db.QueryRowContext(ctx, query, email).Scan(
 		&user.ID, &user.DeviceID, &user.Email, &user.PasswordHash,
-		&user.IsMember, &user.CreatedAt, &user.UpdatedAt,
+		&user.TierID, &user.CreatedAt, &user.UpdatedAt,
+		&tier.ID, &tier.Code, &tier.Name, &tier.Level, &tier.Description, &tier.IsActive,
 	)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, ErrUserNotFound
@@ -111,12 +129,13 @@ func (r *Repository) GetUserByEmail(ctx context.Context, email string) (*User, e
 	if err != nil {
 		return nil, err
 	}
+	user.Tier = tier
 	return user, nil
 }
 
 func (r *Repository) LinkEmail(ctx context.Context, userID int64, email, passwordHash string) error {
 	query := `
-		UPDATE users SET email = $1, password_hash = $2, is_member = TRUE, updated_at = NOW()
+		UPDATE users SET email = $1, password_hash = $2, tier_id = 2, updated_at = NOW()
 		WHERE id = $3
 	`
 	_, err := r.db.ExecContext(ctx, query, email, passwordHash, userID)
@@ -235,4 +254,78 @@ func (r *Repository) EmailExists(ctx context.Context, email string) (bool, error
 	var exists bool
 	err := r.db.QueryRowContext(ctx, query, email).Scan(&exists)
 	return exists, err
+}
+
+// MembershipTier methods
+
+func (r *Repository) GetTierByID(ctx context.Context, id int) (*MembershipTier, error) {
+	query := `
+		SELECT id, code, name, level, description, is_active, created_at, updated_at
+		FROM membership_tiers WHERE id = $1
+	`
+	tier := &MembershipTier{}
+	err := r.db.QueryRowContext(ctx, query, id).Scan(
+		&tier.ID, &tier.Code, &tier.Name, &tier.Level, &tier.Description,
+		&tier.IsActive, &tier.CreatedAt, &tier.UpdatedAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrTierNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return tier, nil
+}
+
+func (r *Repository) GetTierByCode(ctx context.Context, code TierCode) (*MembershipTier, error) {
+	query := `
+		SELECT id, code, name, level, description, is_active, created_at, updated_at
+		FROM membership_tiers WHERE code = $1
+	`
+	tier := &MembershipTier{}
+	err := r.db.QueryRowContext(ctx, query, code).Scan(
+		&tier.ID, &tier.Code, &tier.Name, &tier.Level, &tier.Description,
+		&tier.IsActive, &tier.CreatedAt, &tier.UpdatedAt,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrTierNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	return tier, nil
+}
+
+func (r *Repository) GetAllTiers(ctx context.Context) ([]MembershipTier, error) {
+	query := `
+		SELECT id, code, name, level, description, is_active, created_at, updated_at
+		FROM membership_tiers
+		WHERE is_active = TRUE
+		ORDER BY level ASC
+	`
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var tiers []MembershipTier
+	for rows.Next() {
+		var tier MembershipTier
+		err := rows.Scan(
+			&tier.ID, &tier.Code, &tier.Name, &tier.Level, &tier.Description,
+			&tier.IsActive, &tier.CreatedAt, &tier.UpdatedAt,
+		)
+		if err != nil {
+			return nil, err
+		}
+		tiers = append(tiers, tier)
+	}
+	return tiers, rows.Err()
+}
+
+func (r *Repository) UpdateUserTier(ctx context.Context, userID int64, tierID int) error {
+	query := `UPDATE users SET tier_id = $1, updated_at = NOW() WHERE id = $2`
+	_, err := r.db.ExecContext(ctx, query, tierID, userID)
+	return err
 }

@@ -614,6 +614,41 @@ func (s *Service) GetReappearStats(ctx context.Context) ([]ReappearStat, error) 
 	return s.repo.GetAllReappearStats(ctx)
 }
 
+// GetFirstLastStats 첫번째/마지막 번호 확률 조회
+func (s *Service) GetFirstLastStats(ctx context.Context) (*FirstLastStatsResponse, error) {
+	return s.analyzer.CalculateFirstLastStats(ctx)
+}
+
+// GetPairStats 번호 쌍 동반 출현 통계 조회
+func (s *Service) GetPairStats(ctx context.Context, topN int) (*PairStatsResponse, error) {
+	return s.analyzer.CalculatePairStats(ctx, topN)
+}
+
+// GetConsecutiveStats 연번 패턴 통계 조회
+func (s *Service) GetConsecutiveStats(ctx context.Context) (*ConsecutiveStatsResponse, error) {
+	return s.analyzer.CalculateConsecutiveStats(ctx)
+}
+
+// GetRatioStats 홀짝/고저 비율 통계 조회
+func (s *Service) GetRatioStats(ctx context.Context) (*RatioStatsResponse, error) {
+	return s.analyzer.CalculateRatioStats(ctx)
+}
+
+// GetColorStats 색상 패턴 통계 조회
+func (s *Service) GetColorStats(ctx context.Context, topN int) (*ColorStatsResponse, error) {
+	return s.analyzer.CalculateColorStats(ctx, topN)
+}
+
+// GetRowColStats 행/열 분포 통계 조회
+func (s *Service) GetRowColStats(ctx context.Context, topN int) (*RowColStatsResponse, error) {
+	return s.analyzer.CalculateRowColStats(ctx, topN)
+}
+
+// GetBayesianStats 베이지안 추론 통계 조회
+func (s *Service) GetBayesianStats(ctx context.Context, windowSize int) (*BayesianStatsResponse, error) {
+	return s.analyzer.CalculateBayesianStats(ctx, windowSize)
+}
+
 // TriggerSync 수동 동기화 (관리자용)
 func (s *Service) TriggerSync(ctx context.Context) error {
 	if err := s.FetchNewDraw(ctx); err != nil {

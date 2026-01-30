@@ -9,8 +9,10 @@ import (
 type contextKey string
 
 const (
-	UserIDKey   contextKey = "user_id"
-	IsMemberKey contextKey = "is_member"
+	UserIDKey    contextKey = "user_id"
+	TierIDKey    contextKey = "tier_id"
+	TierCodeKey  contextKey = "tier_code"
+	TierLevelKey contextKey = "tier_level"
 )
 
 type Middleware struct {
@@ -30,14 +32,28 @@ func (m *Middleware) RequireAuth(next http.Handler) http.Handler {
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), UserIDKey, claims.UserID)
-		ctx = context.WithValue(ctx, IsMemberKey, claims.IsMember)
+		ctx := m.setClaimsToContext(r.Context(), claims)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
 
-// RequireMember 회원 전용 미들웨어
+// RequireMember 정회원 이상 전용 미들웨어
 func (m *Middleware) RequireMember(next http.Handler) http.Handler {
+	return m.RequireTierLevel(1, next) // MEMBER level = 1
+}
+
+// RequireGold 골드 이상 전용 미들웨어
+func (m *Middleware) RequireGold(next http.Handler) http.Handler {
+	return m.RequireTierLevel(2, next) // GOLD level = 2
+}
+
+// RequireVIP VIP 전용 미들웨어
+func (m *Middleware) RequireVIP(next http.Handler) http.Handler {
+	return m.RequireTierLevel(3, next) // VIP level = 3
+}
+
+// RequireTierLevel 특정 등급 레벨 이상 필요 미들웨어
+func (m *Middleware) RequireTierLevel(requiredLevel int, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		claims, err := m.extractClaims(r)
 		if err != nil {
@@ -45,13 +61,12 @@ func (m *Middleware) RequireMember(next http.Handler) http.Handler {
 			return
 		}
 
-		if !claims.IsMember {
-			http.Error(w, `{"error":"membership required"}`, http.StatusForbidden)
+		if claims.TierLevel < requiredLevel {
+			http.Error(w, `{"error":"insufficient tier level"}`, http.StatusForbidden)
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), UserIDKey, claims.UserID)
-		ctx = context.WithValue(ctx, IsMemberKey, claims.IsMember)
+		ctx := m.setClaimsToContext(r.Context(), claims)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -61,8 +76,7 @@ func (m *Middleware) OptionalAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		claims, err := m.extractClaims(r)
 		if err == nil {
-			ctx := context.WithValue(r.Context(), UserIDKey, claims.UserID)
-			ctx = context.WithValue(ctx, IsMemberKey, claims.IsMember)
+			ctx := m.setClaimsToContext(r.Context(), claims)
 			r = r.WithContext(ctx)
 		}
 		next.ServeHTTP(w, r)
@@ -83,14 +97,34 @@ func (m *Middleware) extractClaims(r *http.Request) (*Claims, error) {
 	return m.jwt.ValidateAccessToken(parts[1])
 }
 
+func (m *Middleware) setClaimsToContext(ctx context.Context, claims *Claims) context.Context {
+	ctx = context.WithValue(ctx, UserIDKey, claims.UserID)
+	ctx = context.WithValue(ctx, TierIDKey, claims.TierID)
+	ctx = context.WithValue(ctx, TierCodeKey, claims.TierCode)
+	ctx = context.WithValue(ctx, TierLevelKey, claims.TierLevel)
+	return ctx
+}
+
 // GetUserID 컨텍스트에서 사용자 ID 추출
 func GetUserID(ctx context.Context) (int64, bool) {
 	userID, ok := ctx.Value(UserIDKey).(int64)
 	return userID, ok
 }
 
-// IsMember 컨텍스트에서 회원 여부 추출
+// GetTierLevel 컨텍스트에서 등급 레벨 추출
+func GetTierLevel(ctx context.Context) (int, bool) {
+	level, ok := ctx.Value(TierLevelKey).(int)
+	return level, ok
+}
+
+// GetTierCode 컨텍스트에서 등급 코드 추출
+func GetTierCode(ctx context.Context) (TierCode, bool) {
+	code, ok := ctx.Value(TierCodeKey).(TierCode)
+	return code, ok
+}
+
+// IsMember 컨텍스트에서 정회원 이상 여부 추출 (하위 호환)
 func IsMember(ctx context.Context) bool {
-	isMember, ok := ctx.Value(IsMemberKey).(bool)
-	return ok && isMember
+	level, ok := GetTierLevel(ctx)
+	return ok && level >= 1
 }

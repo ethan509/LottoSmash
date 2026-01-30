@@ -4,14 +4,50 @@ import (
 	"time"
 )
 
+// TierCode 회원 등급 코드 상수
+type TierCode string
+
+const (
+	TierGuest  TierCode = "GUEST"  // 게스트 (회원가입 안함)
+	TierMember TierCode = "MEMBER" // 정회원 (회원가입 완료)
+	TierGold   TierCode = "GOLD"   // 골드 (월정액 구독)
+	TierVIP    TierCode = "VIP"    // VIP (특별 등급)
+)
+
+// MembershipTier 회원 등급 메타 정보
+type MembershipTier struct {
+	ID          int       `json:"id"`
+	Code        TierCode  `json:"code"`
+	Name        string    `json:"name"`
+	Level       int       `json:"level"`
+	Description *string   `json:"description,omitempty"`
+	IsActive    bool      `json:"is_active"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
 type User struct {
-	ID           int64      `json:"id"`
-	DeviceID     *string    `json:"device_id,omitempty"`
-	Email        *string    `json:"email,omitempty"`
-	PasswordHash *string    `json:"-"`
-	IsMember     bool       `json:"is_member"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
+	ID           int64           `json:"id"`
+	DeviceID     *string         `json:"device_id,omitempty"`
+	Email        *string         `json:"email,omitempty"`
+	PasswordHash *string         `json:"-"`
+	TierID       int             `json:"tier_id"`
+	Tier         *MembershipTier `json:"tier,omitempty"`
+	CreatedAt    time.Time       `json:"created_at"`
+	UpdatedAt    time.Time       `json:"updated_at"`
+}
+
+// IsMember 정회원 이상인지 확인 (하위 호환용)
+func (u *User) IsMember() bool {
+	return u.TierID >= 2 // MEMBER 이상
+}
+
+// HasTier 특정 등급 이상인지 확인
+func (u *User) HasTier(tierLevel int) bool {
+	if u.Tier != nil {
+		return u.Tier.Level >= tierLevel
+	}
+	return u.TierID >= tierLevel
 }
 
 type RefreshToken struct {
@@ -84,7 +120,13 @@ type TokenResponse struct {
 }
 
 type UserResponse struct {
-	ID       int64   `json:"id"`
-	Email    *string `json:"email,omitempty"`
-	IsMember bool    `json:"is_member"`
+	ID       int64        `json:"id"`
+	Email    *string      `json:"email,omitempty"`
+	Tier     TierResponse `json:"tier"`
+}
+
+type TierResponse struct {
+	Code  TierCode `json:"code"`
+	Name  string   `json:"name"`
+	Level int      `json:"level"`
 }
