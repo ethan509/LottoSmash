@@ -711,3 +711,168 @@ func (a *Analyzer) RunFullAnalysis(ctx context.Context) error {
 	a.log.Infof("RunFullAnalysis: completed successfully")
 	return nil
 }
+
+// CalculateBayesianStats 베이지안 추론 기반 번호별 확률 계산
+// Prior: P(θ) = 1/45 (균등 분포)
+// Likelihood: 최근 windowSize 회차에서의 출현 빈도
+// Posterior: P(θ|D) ∝ P(D|θ)P(θ) (Beta-Binomial 모델)
+func (a *Analyzer) CalculateBayesianStats(ctx context.Context, windowSize int) (*BayesianStatsResponse, error) {
+	draws, err := a.repo.GetAllDraws(ctx)
+	if err != nil {
+		a.log.Errorf("CalculateBayesianStats: failed to get all draws: %v", err)
+		return nil, err
+	}
+
+	if len(draws) == 0 {
+		return nil, nil
+	}
+
+	totalDraws := len(draws)
+	if windowSize <= 0 || windowSize > totalDraws {
+		windowSize = 50 // 기본값: 최근 50회차
+	}
+
+	// 회차 번호 기준 내림차순 정렬 (최신 회차가 먼저)
+	sort.Slice(draws, func(i, j int) bool {
+		return draws[i].DrawNo > draws[j].DrawNo
+	})
+
+	latestDrawNo := draws[0].DrawNo
+
+	// 최근 windowSize 회차만 사용
+	recentDraws := draws
+	if len(draws) > windowSize {
+		recentDraws = draws[:windowSize]
+	}
+	actualWindow := len(recentDraws)
+
+	// 상수
+	const totalNumbers = 45
+	const numbersPerDraw = 6
+	prior := 1.0 / float64(totalNumbers) // P(θ) = 1/45
+
+	// 각 회차에서 6개 번호가 나오므로, 전체 시행 횟수
+	totalTrials := actualWindow * numbersPerDraw
+	// 각 번호의 기대 출현 횟수 (균등 분포 가정)
+	expectedCount := float64(totalTrials) / float64(totalNumbers)
+
+	// 번호별 출현 횟수 카운트
+	recentCountMap := make(map[int]int)
+	lastAppearMap := make(map[int]int)
+	for i := 1; i <= totalNumbers; i++ {
+		recentCountMap[i] = 0
+		lastAppearMap[i] = 0
+	}
+
+	for _, draw := range recentDraws {
+		for _, num := range draw.Numbers() {
+			recentCountMap[num]++
+			if lastAppearMap[num] == 0 || draw.DrawNo > lastAppearMap[num] {
+				lastAppearMap[num] = draw.DrawNo
+			}
+		}
+	}
+
+	// 전체 데이터에서 마지막 출현 회차 계산 (최근 윈도우 밖도 포함)
+	for _, draw := range draws {
+		for _, num := range draw.Numbers() {
+			if draw.DrawNo > lastAppearMap[num] {
+				lastAppearMap[num] = draw.DrawNo
+			}
+		}
+	}
+
+	// Beta-Binomial 모델로 Posterior 계산
+	// Prior: Beta(α, β) where α = β = 1 (uniform)
+	// Posterior: Beta(α + k, β + n - k)
+	// Posterior mean = (α + k) / (α + β + n)
+	alpha := 1.0
+	beta := 1.0
+	n := float64(totalTrials)
+
+	stats := make([]BayesianNumberStat, 0, totalNumbers)
+	var sumPosterior float64
+
+	// 먼저 모든 번호의 posterior를 계산하고 합계를 구함
+	posteriors := make([]float64, totalNumbers+1)
+	for num := 1; num <= totalNumbers; num++ {
+		k := float64(recentCountMap[num])
+		// Posterior mean (Beta distribution)
+		posteriors[num] = (alpha + k) / (alpha + beta + n)
+		sumPosterior += posteriors[num]
+	}
+
+	// 정규화 및 통계 생성
+	for num := 1; num <= totalNumbers; num++ {
+		k := float64(recentCountMap[num])
+		recentCount := recentCountMap[num]
+
+		// Likelihood: 관측된 빈도 (최근 윈도우에서)
+		likelihood := k / n
+
+		// Normalized posterior (합이 1이 되도록)
+		posterior := posteriors[num] / sumPosterior
+
+		// 편차 계산
+		deviation := k - expectedCount
+
+		// Hot/Cold 상태 결정
+		// 기대값 대비 +20% 이상이면 HOT, -20% 이하면 COLD
+		var status string
+		deviationRatio := deviation / expectedCount
+		if deviationRatio > 0.2 {
+			status = "HOT"
+		} else if deviationRatio < -0.2 {
+			status = "COLD"
+		} else {
+			status = "NEUTRAL"
+		}
+
+		// 마지막 출현 후 경과 회차
+		gapSinceLast := latestDrawNo - lastAppearMap[num]
+
+		stats = append(stats, BayesianNumberStat{
+			Number:           num,
+			Prior:            prior,
+			Likelihood:       likelihood,
+			Posterior:        posterior,
+			RecentCount:      recentCount,
+			ExpectedCount:    expectedCount,
+			Deviation:        deviation,
+			Status:           status,
+			LastAppearDrawNo: lastAppearMap[num],
+			GapSinceLastDraw: gapSinceLast,
+		})
+	}
+
+	// Posterior 기준 내림차순 정렬
+	sort.Slice(stats, func(i, j int) bool {
+		return stats[i].Posterior > stats[j].Posterior
+	})
+
+	// Hot/Cold 번호 추출 (상위/하위 10개)
+	topN := 10
+	if topN > len(stats) {
+		topN = len(stats)
+	}
+
+	hotNumbers := make([]BayesianNumberStat, 0, topN)
+	coldNumbers := make([]BayesianNumberStat, 0, topN)
+
+	for i := 0; i < topN; i++ {
+		hotNumbers = append(hotNumbers, stats[i])
+	}
+
+	for i := len(stats) - 1; i >= len(stats)-topN && i >= 0; i-- {
+		coldNumbers = append(coldNumbers, stats[i])
+	}
+
+	return &BayesianStatsResponse{
+		Numbers:      stats,
+		HotNumbers:   hotNumbers,
+		ColdNumbers:  coldNumbers,
+		WindowSize:   actualWindow,
+		TotalDraws:   totalDraws,
+		LatestDrawNo: latestDrawNo,
+	}, nil
+}

@@ -644,6 +644,11 @@ func (s *Service) GetRowColStats(ctx context.Context, topN int) (*RowColStatsRes
 	return s.analyzer.CalculateRowColStats(ctx, topN)
 }
 
+// GetBayesianStats 베이지안 추론 통계 조회
+func (s *Service) GetBayesianStats(ctx context.Context, windowSize int) (*BayesianStatsResponse, error) {
+	return s.analyzer.CalculateBayesianStats(ctx, windowSize)
+}
+
 // TriggerSync 수동 동기화 (관리자용)
 func (s *Service) TriggerSync(ctx context.Context) error {
 	if err := s.FetchNewDraw(ctx); err != nil {

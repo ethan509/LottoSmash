@@ -202,3 +202,28 @@ type StatsResponse struct {
 	LatestDrawNo  int            `json:"latest_draw_no"`
 	CalculatedAt  time.Time      `json:"calculated_at"`
 }
+
+// BayesianNumberStat 베이지안 추론 기반 번호별 통계
+// P(θ|D) ∝ P(D|θ)P(θ) - 사후확률은 우도와 사전확률의 곱에 비례
+type BayesianNumberStat struct {
+	Number           int     `json:"number"`            // 번호 (1~45)
+	Prior            float64 `json:"prior"`             // 사전 확률 P(θ) = 1/45
+	Likelihood       float64 `json:"likelihood"`        // 우도 P(D|θ) - 최근 N회차 출현 빈도
+	Posterior        float64 `json:"posterior"`         // 사후 확률 P(θ|D)
+	RecentCount      int     `json:"recent_count"`      // 최근 N회차 출현 횟수
+	ExpectedCount    float64 `json:"expected_count"`    // 기대 출현 횟수
+	Deviation        float64 `json:"deviation"`         // 편차 (실제 - 기대)
+	Status           string  `json:"status"`            // HOT, COLD, NEUTRAL
+	LastAppearDrawNo int     `json:"last_appear_draw"`  // 마지막 출현 회차
+	GapSinceLastDraw int     `json:"gap_since_last"`    // 마지막 출현 후 경과 회차
+}
+
+// BayesianStatsResponse 베이지안 분석 응답
+type BayesianStatsResponse struct {
+	Numbers      []BayesianNumberStat `json:"numbers"`        // 전체 번호 통계
+	HotNumbers   []BayesianNumberStat `json:"hot_numbers"`    // HOT 번호 (상위)
+	ColdNumbers  []BayesianNumberStat `json:"cold_numbers"`   // COLD 번호 (하위)
+	WindowSize   int                  `json:"window_size"`    // 분석 윈도우 크기 (최근 N회차)
+	TotalDraws   int                  `json:"total_draws"`    // 전체 회차 수
+	LatestDrawNo int                  `json:"latest_draw_no"` // 최신 회차 번호
+}

@@ -189,6 +189,24 @@ func (h *Handler) GetRowColStats(w http.ResponseWriter, r *http.Request) {
 	h.jsonResponse(w, http.StatusOK, stats)
 }
 
+// GetBayesianStats GET /api/lotto/stats/bayesian?window=50
+func (h *Handler) GetBayesianStats(w http.ResponseWriter, r *http.Request) {
+	windowSize := 50
+	if w := r.URL.Query().Get("window"); w != "" {
+		if v, err := strconv.Atoi(w); err == nil && v > 0 && v <= 500 {
+			windowSize = v
+		}
+	}
+
+	stats, err := h.service.GetBayesianStats(r.Context(), windowSize)
+	if err != nil {
+		h.errorResponse(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	h.jsonResponse(w, http.StatusOK, stats)
+}
+
 // TriggerSync POST /api/admin/lotto/sync
 func (h *Handler) TriggerSync(w http.ResponseWriter, r *http.Request) {
 	if err := h.service.TriggerSync(r.Context()); err != nil {
