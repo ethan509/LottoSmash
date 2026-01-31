@@ -7,10 +7,12 @@ CREATE TABLE IF NOT EXISTS users (
     device_id       VARCHAR(255) UNIQUE,
     email           VARCHAR(255) UNIQUE,
     password_hash   VARCHAR(255),
-    is_member       BOOLEAN DEFAULT FALSE,
+    lotto_tier      INT DEFAULT 1 NOT NULL,
     created_at      TIMESTAMP DEFAULT NOW(),
     updated_at      TIMESTAMP DEFAULT NOW()
 );
+
+-- 외래키는 000003에서 설정
 
 -- refresh_tokens 테이블
 CREATE TABLE IF NOT EXISTS refresh_tokens (
