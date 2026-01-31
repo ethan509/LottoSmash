@@ -20,8 +20,7 @@ CREATE TABLE IF NOT EXISTS lotto_draws (
 
 -- lotto_number_stats: 각 번호별 통계 테이블
 CREATE TABLE IF NOT EXISTS lotto_number_stats (
-    id              BIGSERIAL PRIMARY KEY,
-    number          SMALLINT UNIQUE NOT NULL,
+    number          SMALLINT PRIMARY KEY,
     total_count     INTEGER DEFAULT 0,
     bonus_count     INTEGER DEFAULT 0,
     last_draw_no    INTEGER,

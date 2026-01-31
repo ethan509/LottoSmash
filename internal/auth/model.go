@@ -31,7 +31,7 @@ type User struct {
 	DeviceID     *string         `json:"device_id,omitempty"`
 	Email        *string         `json:"email,omitempty"`
 	PasswordHash *string         `json:"-"`
-	TierID       int             `json:"tier_id"`
+	LottoTier    int             `json:"lotto_tier"`
 	Tier         *MembershipTier `json:"tier,omitempty"`
 	CreatedAt    time.Time       `json:"created_at"`
 	UpdatedAt    time.Time       `json:"updated_at"`
@@ -39,7 +39,7 @@ type User struct {
 
 // IsMember 정회원 이상인지 확인 (하위 호환용)
 func (u *User) IsMember() bool {
-	return u.TierID >= 2 // MEMBER 이상
+	return u.LottoTier >= 2 // MEMBER 이상
 }
 
 // HasTier 특정 등급 이상인지 확인
@@ -47,7 +47,7 @@ func (u *User) HasTier(tierLevel int) bool {
 	if u.Tier != nil {
 		return u.Tier.Level >= tierLevel
 	}
-	return u.TierID >= tierLevel
+	return u.LottoTier >= tierLevel
 }
 
 type RefreshToken struct {
@@ -120,9 +120,9 @@ type TokenResponse struct {
 }
 
 type UserResponse struct {
-	ID       int64        `json:"id"`
-	Email    *string      `json:"email,omitempty"`
-	Tier     TierResponse `json:"tier"`
+	ID    int64        `json:"id"`
+	Email *string      `json:"email,omitempty"`
+	Tier  TierResponse `json:"tier"`
 }
 
 type TierResponse struct {

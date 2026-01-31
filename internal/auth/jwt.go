@@ -26,7 +26,7 @@ type JWTManager struct {
 
 type Claims struct {
 	UserID    int64    `json:"user_id"`
-	TierID    int      `json:"tier_id"`
+	LottoTier int      `json:"lotto_tier"`
 	TierCode  TierCode `json:"tier_code"`
 	TierLevel int      `json:"tier_level"`
 	jwt.RegisteredClaims
@@ -48,7 +48,7 @@ func NewJWTManager(config JWTConfig) *JWTManager {
 func (j *JWTManager) GenerateAccessToken(user *User) (string, error) {
 	now := time.Now()
 
-	tierID := user.TierID
+	lottoTier := user.LottoTier
 	tierCode := TierGuest
 	tierLevel := 0
 	if user.Tier != nil {
@@ -58,7 +58,7 @@ func (j *JWTManager) GenerateAccessToken(user *User) (string, error) {
 
 	claims := Claims{
 		UserID:    user.ID,
-		TierID:    tierID,
+		LottoTier: lottoTier,
 		TierCode:  tierCode,
 		TierLevel: tierLevel,
 		RegisteredClaims: jwt.RegisteredClaims{
