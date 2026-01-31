@@ -626,6 +626,24 @@ func (s *Service) GetBayesianStatsByDrawNo(ctx context.Context, drawNo int) ([]B
 	return s.repo.GetBayesianStatsByDrawNo(ctx, drawNo)
 }
 
+// GetAnalysisStats 통합 분석 통계 조회 (최신 회차)
+func (s *Service) GetAnalysisStats(ctx context.Context) ([]AnalysisStat, error) {
+	return s.repo.GetLatestAnalysisStats(ctx)
+}
+
+// GetAnalysisStatsByDrawNo 특정 회차의 통합 분석 통계 조회
+func (s *Service) GetAnalysisStatsByDrawNo(ctx context.Context, drawNo int) ([]AnalysisStat, error) {
+	return s.repo.GetAnalysisStatsByDrawNo(ctx, drawNo)
+}
+
+// GetAnalysisStatsHistory 특정 번호의 통합 분석 통계 히스토리 조회
+func (s *Service) GetAnalysisStatsHistory(ctx context.Context, number int, limit int) ([]AnalysisStat, error) {
+	if number < 1 || number > 45 {
+		return nil, fmt.Errorf("invalid number: must be between 1 and 45")
+	}
+	return s.repo.GetAnalysisStatsHistory(ctx, number, limit)
+}
+
 // TriggerSync 수동 동기화 (관리자용)
 func (s *Service) TriggerSync(ctx context.Context) error {
 	if err := s.FetchNewDraw(ctx); err != nil {

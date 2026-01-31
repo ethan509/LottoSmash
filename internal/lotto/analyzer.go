@@ -708,9 +708,15 @@ func (a *Analyzer) RunFullAnalysis(ctx context.Context) error {
 		}
 	}
 
-	// 베이지안 통계 계산 및 저장 (점진적 업데이트)
+	// 베이지안 통계 계산 및 저장 (점진적 업데이트) - 기존 테이블용
 	if err := a.CalculateIncrementalBayesianStats(ctx); err != nil {
 		a.log.Errorf("RunFullAnalysis: failed to calculate bayesian stats: %v", err)
+		return err
+	}
+
+	// 통합 분석 통계 계산 및 저장 (점진적 업데이트)
+	if err := a.CalculateUnifiedStats(ctx); err != nil {
+		a.log.Errorf("RunFullAnalysis: failed to calculate unified stats: %v", err)
 		return err
 	}
 
@@ -1079,5 +1085,270 @@ func (a *Analyzer) CalculateFullBayesianStats(ctx context.Context) error {
 	}
 
 	a.log.Infof("CalculateFullBayesianStats: completed successfully (%d draws)", len(draws))
+	return nil
+}
+
+// CalculateUnifiedStats 통합 분석 통계 계산 (점진적 업데이트)
+// - 이전 회차 통계가 있으면: 점진적 업데이트
+// - 이전 회차 통계가 없으면: 전체 계산
+func (a *Analyzer) CalculateUnifiedStats(ctx context.Context) error {
+	a.log.Infof("CalculateUnifiedStats: starting")
+
+	// 현재 DB에 저장된 가장 최근 통합 분석 회차 확인
+	latestAnalysisDrawNo, err := a.repo.GetLatestAnalysisDrawNo(ctx)
+	if err != nil {
+		a.log.Errorf("CalculateUnifiedStats: failed to get latest analysis draw no: %v", err)
+		return err
+	}
+
+	// 현재 DB에 저장된 가장 최근 당첨번호 회차 확인
+	latestDrawNo, err := a.repo.GetLatestDrawNo(ctx)
+	if err != nil {
+		a.log.Errorf("CalculateUnifiedStats: failed to get latest draw no: %v", err)
+		return err
+	}
+
+	if latestDrawNo == 0 {
+		a.log.Infof("CalculateUnifiedStats: no draws found, skipping")
+		return nil
+	}
+
+	// 통합 분석이 이미 최신이면 스킵
+	if latestAnalysisDrawNo >= latestDrawNo {
+		a.log.Infof("CalculateUnifiedStats: already up to date (draw %d)", latestAnalysisDrawNo)
+		return nil
+	}
+
+	// 통합 분석이 없으면 전체 계산
+	if latestAnalysisDrawNo == 0 {
+		a.log.Infof("CalculateUnifiedStats: no analysis stats found, running full calculation")
+		return a.CalculateFullUnifiedStats(ctx)
+	}
+
+	// 점진적 업데이트: 마지막 계산 회차 이후부터 최신 회차까지
+	a.log.Infof("CalculateUnifiedStats: updating from draw %d to %d", latestAnalysisDrawNo+1, latestDrawNo)
+
+	// 이전 회차 통계 조회
+	prevStats, err := a.repo.GetAnalysisStatsByDrawNo(ctx, latestAnalysisDrawNo)
+	if err != nil {
+		a.log.Errorf("CalculateUnifiedStats: failed to get prev stats: %v", err)
+		return err
+	}
+
+	// 이전 통계를 맵으로 변환 (번호 -> 통계)
+	prevStatsMap := make(map[int]AnalysisStat)
+	for _, stat := range prevStats {
+		prevStatsMap[stat.Number] = stat
+	}
+
+	// 모든 회차 데이터 조회 (재등장 확률 계산을 위해)
+	draws, err := a.repo.GetAllDraws(ctx)
+	if err != nil {
+		a.log.Errorf("CalculateUnifiedStats: failed to get all draws: %v", err)
+		return err
+	}
+
+	// 회차별로 맵 생성
+	drawsMap := make(map[int]*LottoDraw)
+	for _, draw := range draws {
+		drawsMap[draw.DrawNo] = draw
+	}
+
+	// 각 회차별로 업데이트
+	const totalNumbers = 45
+	const alpha, beta = 1.0, 1.0
+
+	for drawNo := latestAnalysisDrawNo + 1; drawNo <= latestDrawNo; drawNo++ {
+		draw := drawsMap[drawNo]
+		if draw == nil {
+			continue
+		}
+
+		prevDraw := drawsMap[drawNo-1]
+
+		// 이번 회차 당첨번호
+		newNumbers := draw.Numbers()
+		newNumbersSet := make(map[int]bool)
+		for _, num := range newNumbers {
+			newNumbersSet[num] = true
+		}
+
+		// 이전 회차 번호 (재등장 확률용)
+		var prevNumbersSet map[int]bool
+		if prevDraw != nil {
+			prevNumbersSet = make(map[int]bool)
+			for _, num := range prevDraw.Numbers() {
+				prevNumbersSet[num] = true
+			}
+		}
+
+		// 새로운 통계 계산
+		newStats := make([]AnalysisStat, 0, totalNumbers)
+
+		for num := 1; num <= totalNumbers; num++ {
+			prev := prevStatsMap[num]
+			appeared := newNumbersSet[num]
+
+			// 기본 통계 업데이트
+			newCount := prev.TotalCount
+			newBonusCount := prev.BonusCount
+			if appeared {
+				newCount++
+			}
+			if draw.BonusNum == num {
+				newBonusCount++
+			}
+
+			// 재등장 통계 업데이트
+			newReappearTotal := prev.ReappearTotal
+			newReappearCount := prev.ReappearCount
+			if prevNumbersSet != nil && prevNumbersSet[num] {
+				newReappearTotal++
+				if appeared {
+					newReappearCount++
+				}
+			}
+			var reappearProb float64
+			if newReappearTotal > 0 {
+				reappearProb = float64(newReappearCount) / float64(newReappearTotal)
+			}
+
+			// 베이지안 업데이트
+			totalTrials := float64(drawNo * 6)
+			posterior := (alpha + float64(newCount)) / (alpha + beta + totalTrials)
+
+			newStat := AnalysisStat{
+				DrawNo:        drawNo,
+				Number:        num,
+				TotalCount:    newCount,
+				BonusCount:    newBonusCount,
+				ReappearTotal: newReappearTotal,
+				ReappearCount: newReappearCount,
+				ReappearProb:  reappearProb,
+				BayesianPrior: prev.BayesianPost,
+				BayesianPost:  posterior,
+				Appeared:      appeared,
+			}
+			newStats = append(newStats, newStat)
+
+			// 다음 회차를 위해 맵 업데이트
+			prevStatsMap[num] = newStat
+		}
+
+		// DB에 저장
+		if err := a.repo.UpsertAnalysisStats(ctx, newStats); err != nil {
+			a.log.Errorf("CalculateUnifiedStats: failed to upsert stats for draw %d: %v", drawNo, err)
+			return err
+		}
+	}
+
+	a.log.Infof("CalculateUnifiedStats: completed successfully")
+	return nil
+}
+
+// CalculateFullUnifiedStats 전체 통합 분석 통계 계산 (초기화용)
+func (a *Analyzer) CalculateFullUnifiedStats(ctx context.Context) error {
+	a.log.Infof("CalculateFullUnifiedStats: starting full calculation")
+
+	draws, err := a.repo.GetAllDraws(ctx)
+	if err != nil {
+		a.log.Errorf("CalculateFullUnifiedStats: failed to get all draws: %v", err)
+		return err
+	}
+
+	if len(draws) == 0 {
+		a.log.Infof("CalculateFullUnifiedStats: no draws found")
+		return nil
+	}
+
+	// 회차순 정렬 (오름차순)
+	sort.Slice(draws, func(i, j int) bool {
+		return draws[i].DrawNo < draws[j].DrawNo
+	})
+
+	const totalNumbers = 45
+	const alpha, beta = 1.0, 1.0
+
+	// 누적 통계 초기화
+	countMap := make(map[int]int)
+	bonusCountMap := make(map[int]int)
+	reappearTotalMap := make(map[int]int)
+	reappearCountMap := make(map[int]int)
+	for num := 1; num <= totalNumbers; num++ {
+		countMap[num] = 0
+		bonusCountMap[num] = 0
+		reappearTotalMap[num] = 0
+		reappearCountMap[num] = 0
+	}
+
+	var prevNumbersSet map[int]bool
+
+	// 각 회차별로 통계 계산 및 저장
+	for _, draw := range draws {
+		// 이번 회차 당첨번호
+		newNumbers := draw.Numbers()
+		newNumbersSet := make(map[int]bool)
+		for _, num := range newNumbers {
+			newNumbersSet[num] = true
+		}
+
+		// 카운트 업데이트
+		for _, num := range newNumbers {
+			countMap[num]++
+		}
+		bonusCountMap[draw.BonusNum]++
+
+		// 재등장 업데이트 (2회차부터)
+		if prevNumbersSet != nil {
+			for num := 1; num <= totalNumbers; num++ {
+				if prevNumbersSet[num] {
+					reappearTotalMap[num]++
+					if newNumbersSet[num] {
+						reappearCountMap[num]++
+					}
+				}
+			}
+		}
+
+		// 통계 계산
+		newStats := make([]AnalysisStat, 0, totalNumbers)
+		totalTrials := float64(draw.DrawNo * 6)
+
+		for num := 1; num <= totalNumbers; num++ {
+			appeared := newNumbersSet[num]
+			count := countMap[num]
+
+			var reappearProb float64
+			if reappearTotalMap[num] > 0 {
+				reappearProb = float64(reappearCountMap[num]) / float64(reappearTotalMap[num])
+			}
+
+			posterior := (alpha + float64(count)) / (alpha + beta + totalTrials)
+
+			newStats = append(newStats, AnalysisStat{
+				DrawNo:        draw.DrawNo,
+				Number:        num,
+				TotalCount:    count,
+				BonusCount:    bonusCountMap[num],
+				ReappearTotal: reappearTotalMap[num],
+				ReappearCount: reappearCountMap[num],
+				ReappearProb:  reappearProb,
+				BayesianPrior: 1.0 / float64(totalNumbers),
+				BayesianPost:  posterior,
+				Appeared:      appeared,
+			})
+		}
+
+		// DB에 저장
+		if err := a.repo.UpsertAnalysisStats(ctx, newStats); err != nil {
+			a.log.Errorf("CalculateFullUnifiedStats: failed to upsert stats for draw %d: %v", draw.DrawNo, err)
+			return err
+		}
+
+		// 다음 회차를 위해 현재 번호 저장
+		prevNumbersSet = newNumbersSet
+	}
+
+	a.log.Infof("CalculateFullUnifiedStats: completed successfully (%d draws)", len(draws))
 	return nil
 }

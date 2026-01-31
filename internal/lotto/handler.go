@@ -261,6 +261,71 @@ func (h *Handler) GetBayesianStatsByDrawNo(w http.ResponseWriter, r *http.Reques
 	h.jsonResponse(w, http.StatusOK, stats)
 }
 
+// GetAnalysisStats GET /api/lotto/stats/analysis
+func (h *Handler) GetAnalysisStats(w http.ResponseWriter, r *http.Request) {
+	stats, err := h.service.GetAnalysisStats(r.Context())
+	if err != nil {
+		h.errorResponse(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	h.jsonResponse(w, http.StatusOK, stats)
+}
+
+// GetAnalysisStatsByDrawNo GET /api/lotto/stats/analysis/{drawNo}
+func (h *Handler) GetAnalysisStatsByDrawNo(w http.ResponseWriter, r *http.Request) {
+	drawNoStr := r.PathValue("drawNo")
+	drawNo, err := strconv.Atoi(drawNoStr)
+	if err != nil || drawNo < 1 {
+		h.errorResponse(w, http.StatusBadRequest, "invalid draw number")
+		return
+	}
+
+	stats, err := h.service.GetAnalysisStatsByDrawNo(r.Context(), drawNo)
+	if err != nil {
+		h.errorResponse(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if len(stats) == 0 {
+		h.errorResponse(w, http.StatusNotFound, "analysis stats not found for this draw")
+		return
+	}
+
+	h.jsonResponse(w, http.StatusOK, stats)
+}
+
+// GetAnalysisStatsHistory GET /api/lotto/stats/analysis/history?number=7&limit=50
+func (h *Handler) GetAnalysisStatsHistory(w http.ResponseWriter, r *http.Request) {
+	// number 파라미터 (필수)
+	numberStr := r.URL.Query().Get("number")
+	if numberStr == "" {
+		h.errorResponse(w, http.StatusBadRequest, "number parameter is required")
+		return
+	}
+	number, err := strconv.Atoi(numberStr)
+	if err != nil || number < 1 || number > 45 {
+		h.errorResponse(w, http.StatusBadRequest, "number must be between 1 and 45")
+		return
+	}
+
+	// limit 파라미터 (선택, 기본값 50)
+	limit := 50
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if v, err := strconv.Atoi(l); err == nil && v > 0 && v <= 1000 {
+			limit = v
+		}
+	}
+
+	stats, err := h.service.GetAnalysisStatsHistory(r.Context(), number, limit)
+	if err != nil {
+		h.errorResponse(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	h.jsonResponse(w, http.StatusOK, stats)
+}
+
 // TriggerSync POST /api/admin/lotto/sync
 func (h *Handler) TriggerSync(w http.ResponseWriter, r *http.Request) {
 	if err := h.service.TriggerSync(r.Context()); err != nil {

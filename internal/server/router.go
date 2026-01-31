@@ -96,6 +96,9 @@ func NewRouter(deps Dependencies) http.Handler {
 				r.Get("/stats/bayesian", lottoHandler.GetBayesianStats)
 				r.Get("/stats/bayesian/history", lottoHandler.GetBayesianStatsHistory)
 				r.Get("/stats/bayesian/{drawNo}", lottoHandler.GetBayesianStatsByDrawNo)
+				r.Get("/stats/analysis", lottoHandler.GetAnalysisStats)
+				r.Get("/stats/analysis/history", lottoHandler.GetAnalysisStatsHistory)
+				r.Get("/stats/analysis/{drawNo}", lottoHandler.GetAnalysisStatsByDrawNo)
 			})
 
 			// admin lotto routes (protected)
