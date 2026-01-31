@@ -18,10 +18,10 @@
   },
   "database": {
     "host": "db",
-    "port": 5432,
-    "user": "lotto_user",
-    "password": "lotto_password",
-    "dbName": "lotto_db",
+    "port": 5434,
+    "user": "lottosmash",
+    "password": "lottosmash_pw",
+    "dbName": "lottosmash_db",
     "sslMode": "disable",
     "autoMigrate": true
   },

@@ -10,7 +10,7 @@ type contextKey string
 
 const (
 	UserIDKey    contextKey = "user_id"
-	TierIDKey    contextKey = "tier_id"
+	LottoTierKey contextKey = "lotto_tier"
 	TierCodeKey  contextKey = "tier_code"
 	TierLevelKey contextKey = "tier_level"
 )
@@ -99,7 +99,7 @@ func (m *Middleware) extractClaims(r *http.Request) (*Claims, error) {
 
 func (m *Middleware) setClaimsToContext(ctx context.Context, claims *Claims) context.Context {
 	ctx = context.WithValue(ctx, UserIDKey, claims.UserID)
-	ctx = context.WithValue(ctx, TierIDKey, claims.TierID)
+	ctx = context.WithValue(ctx, LottoTierKey, claims.LottoTier)
 	ctx = context.WithValue(ctx, TierCodeKey, claims.TierCode)
 	ctx = context.WithValue(ctx, TierLevelKey, claims.TierLevel)
 	return ctx
