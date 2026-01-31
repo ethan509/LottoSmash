@@ -708,6 +708,12 @@ func (a *Analyzer) RunFullAnalysis(ctx context.Context) error {
 		}
 	}
 
+	// 베이지안 통계 계산 및 저장 (점진적 업데이트)
+	if err := a.CalculateIncrementalBayesianStats(ctx); err != nil {
+		a.log.Errorf("RunFullAnalysis: failed to calculate bayesian stats: %v", err)
+		return err
+	}
+
 	a.log.Infof("RunFullAnalysis: completed successfully")
 	return nil
 }
@@ -875,4 +881,203 @@ func (a *Analyzer) CalculateBayesianStats(ctx context.Context, windowSize int) (
 		TotalDraws:   totalDraws,
 		LatestDrawNo: latestDrawNo,
 	}, nil
+}
+
+// CalculateIncrementalBayesianStats 점진적 베이지안 통계 계산
+// - 이전 회차 통계가 있으면: 이전 posterior를 prior로 사용하여 업데이트
+// - 이전 회차 통계가 없으면: 1회차부터 전체 계산 (초기화)
+func (a *Analyzer) CalculateIncrementalBayesianStats(ctx context.Context) error {
+	a.log.Infof("CalculateIncrementalBayesianStats: starting")
+
+	// 현재 DB에 저장된 가장 최근 베이지안 통계 회차 확인
+	latestBayesianDrawNo, err := a.repo.GetLatestBayesianDrawNo(ctx)
+	if err != nil {
+		a.log.Errorf("CalculateIncrementalBayesianStats: failed to get latest bayesian draw no: %v", err)
+		return err
+	}
+
+	// 현재 DB에 저장된 가장 최근 당첨번호 회차 확인
+	latestDrawNo, err := a.repo.GetLatestDrawNo(ctx)
+	if err != nil {
+		a.log.Errorf("CalculateIncrementalBayesianStats: failed to get latest draw no: %v", err)
+		return err
+	}
+
+	if latestDrawNo == 0 {
+		a.log.Infof("CalculateIncrementalBayesianStats: no draws found, skipping")
+		return nil
+	}
+
+	// 베이지안 통계가 이미 최신이면 스킵
+	if latestBayesianDrawNo >= latestDrawNo {
+		a.log.Infof("CalculateIncrementalBayesianStats: already up to date (draw %d)", latestBayesianDrawNo)
+		return nil
+	}
+
+	// 베이지안 통계가 없으면 전체 계산
+	if latestBayesianDrawNo == 0 {
+		a.log.Infof("CalculateIncrementalBayesianStats: no bayesian stats found, running full calculation")
+		return a.CalculateFullBayesianStats(ctx)
+	}
+
+	// 점진적 업데이트: 마지막 계산 회차 이후부터 최신 회차까지 계산
+	a.log.Infof("CalculateIncrementalBayesianStats: updating from draw %d to %d", latestBayesianDrawNo+1, latestDrawNo)
+
+	// 이전 회차 통계 조회
+	prevStats, err := a.repo.GetBayesianStatsByDrawNo(ctx, latestBayesianDrawNo)
+	if err != nil {
+		a.log.Errorf("CalculateIncrementalBayesianStats: failed to get prev stats: %v", err)
+		return err
+	}
+
+	// 이전 통계를 맵으로 변환 (번호 -> 통계)
+	prevStatsMap := make(map[int]BayesianStat)
+	for _, stat := range prevStats {
+		prevStatsMap[stat.Number] = stat
+	}
+
+	// 각 회차별로 업데이트
+	for drawNo := latestBayesianDrawNo + 1; drawNo <= latestDrawNo; drawNo++ {
+		draw, err := a.repo.GetDrawByNo(ctx, drawNo)
+		if err != nil {
+			a.log.Errorf("CalculateIncrementalBayesianStats: failed to get draw %d: %v", drawNo, err)
+			return err
+		}
+
+		// 이번 회차 당첨번호
+		newNumbers := draw.Numbers()
+		newNumbersSet := make(map[int]bool)
+		for _, num := range newNumbers {
+			newNumbersSet[num] = true
+		}
+
+		// 새로운 통계 계산
+		newStats := make([]BayesianStat, 0, 45)
+		const totalNumbers = 45
+		const alpha = 1.0
+		const beta = 1.0
+
+		for num := 1; num <= totalNumbers; num++ {
+			prev := prevStatsMap[num]
+			appeared := newNumbersSet[num]
+
+			newCount := prev.TotalCount
+			if appeared {
+				newCount++
+			}
+
+			// Beta-Binomial 업데이트
+			// posterior = (alpha + count) / (alpha + beta + totalTrials)
+			totalTrials := float64(drawNo * 6) // 전체 시행 횟수
+			posterior := (alpha + float64(newCount)) / (alpha + beta + totalTrials)
+
+			newStat := BayesianStat{
+				DrawNo:     drawNo,
+				Number:     num,
+				TotalCount: newCount,
+				TotalDraws: drawNo,
+				Prior:      prev.Posterior, // 이전 posterior가 새 prior
+				Posterior:  posterior,
+				Appeared:   appeared,
+			}
+			newStats = append(newStats, newStat)
+
+			// 다음 회차를 위해 맵 업데이트
+			prevStatsMap[num] = newStat
+		}
+
+		// DB에 저장
+		if err := a.repo.UpsertBayesianStats(ctx, newStats); err != nil {
+			a.log.Errorf("CalculateIncrementalBayesianStats: failed to upsert stats for draw %d: %v", drawNo, err)
+			return err
+		}
+	}
+
+	a.log.Infof("CalculateIncrementalBayesianStats: completed successfully")
+	return nil
+}
+
+// CalculateFullBayesianStats 전체 베이지안 통계 계산 (초기화용)
+// 1회차부터 현재까지 모든 회차에 대해 계산
+func (a *Analyzer) CalculateFullBayesianStats(ctx context.Context) error {
+	a.log.Infof("CalculateFullBayesianStats: starting full calculation")
+
+	draws, err := a.repo.GetAllDraws(ctx)
+	if err != nil {
+		a.log.Errorf("CalculateFullBayesianStats: failed to get all draws: %v", err)
+		return err
+	}
+
+	if len(draws) == 0 {
+		a.log.Infof("CalculateFullBayesianStats: no draws found")
+		return nil
+	}
+
+	// 회차순 정렬 (오름차순)
+	sort.Slice(draws, func(i, j int) bool {
+		return draws[i].DrawNo < draws[j].DrawNo
+	})
+
+	const totalNumbers = 45
+	const alpha = 1.0
+	const beta = 1.0
+	prior := 1.0 / float64(totalNumbers) // 초기 사전확률
+
+	// 누적 카운트 초기화
+	countMap := make(map[int]int)
+	for num := 1; num <= totalNumbers; num++ {
+		countMap[num] = 0
+	}
+
+	// 각 회차별로 통계 계산 및 저장
+	for _, draw := range draws {
+		// 이번 회차 당첨번호
+		newNumbers := draw.Numbers()
+		newNumbersSet := make(map[int]bool)
+		for _, num := range newNumbers {
+			newNumbersSet[num] = true
+		}
+
+		// 카운트 업데이트
+		for _, num := range newNumbers {
+			countMap[num]++
+		}
+
+		// 통계 계산
+		newStats := make([]BayesianStat, 0, totalNumbers)
+		totalTrials := float64(draw.DrawNo * 6)
+
+		for num := 1; num <= totalNumbers; num++ {
+			appeared := newNumbersSet[num]
+			count := countMap[num]
+
+			// Beta-Binomial posterior
+			posterior := (alpha + float64(count)) / (alpha + beta + totalTrials)
+
+			newStats = append(newStats, BayesianStat{
+				DrawNo:     draw.DrawNo,
+				Number:     num,
+				TotalCount: count,
+				TotalDraws: draw.DrawNo,
+				Prior:      prior, // 첫 회차는 균등 prior
+				Posterior:  posterior,
+				Appeared:   appeared,
+			})
+
+			// 다음 회차를 위해 prior 업데이트
+			prior = posterior
+		}
+
+		// DB에 저장
+		if err := a.repo.UpsertBayesianStats(ctx, newStats); err != nil {
+			a.log.Errorf("CalculateFullBayesianStats: failed to upsert stats for draw %d: %v", draw.DrawNo, err)
+			return err
+		}
+
+		// 다음 회차를 위해 prior 리셋 (각 번호별로 다르므로)
+		prior = 1.0 / float64(totalNumbers)
+	}
+
+	a.log.Infof("CalculateFullBayesianStats: completed successfully (%d draws)", len(draws))
+	return nil
 }

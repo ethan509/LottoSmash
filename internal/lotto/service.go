@@ -613,6 +613,19 @@ func (s *Service) GetBayesianStats(ctx context.Context, windowSize int) (*Bayesi
 	return s.analyzer.CalculateBayesianStats(ctx, windowSize)
 }
 
+// GetBayesianStatsHistory 특정 번호의 베이지안 확률 변화 히스토리 조회
+func (s *Service) GetBayesianStatsHistory(ctx context.Context, number int, limit int) ([]BayesianStat, error) {
+	if number < 1 || number > 45 {
+		return nil, fmt.Errorf("invalid number: must be between 1 and 45")
+	}
+	return s.repo.GetBayesianStatsHistory(ctx, number, limit)
+}
+
+// GetBayesianStatsByDrawNo 특정 회차의 베이지안 통계 조회
+func (s *Service) GetBayesianStatsByDrawNo(ctx context.Context, drawNo int) ([]BayesianStat, error) {
+	return s.repo.GetBayesianStatsByDrawNo(ctx, drawNo)
+}
+
 // TriggerSync 수동 동기화 (관리자용)
 func (s *Service) TriggerSync(ctx context.Context) error {
 	if err := s.FetchNewDraw(ctx); err != nil {

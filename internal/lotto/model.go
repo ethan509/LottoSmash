@@ -252,6 +252,20 @@ type BayesianStatsResponse struct {
 	LatestDrawNo int                  `json:"latest_draw_no"` // 최신 회차 번호
 }
 
+// BayesianStat DB 저장용 누적 베이지안 통계
+// 각 회차별, 각 번호별 확률을 누적하여 저장
+type BayesianStat struct {
+	ID           int64     `json:"id"`
+	DrawNo       int       `json:"draw_no"`       // 회차 번호
+	Number       int       `json:"number"`        // 번호 (1~45)
+	TotalCount   int       `json:"total_count"`   // 1회차부터 해당 회차까지 누적 출현 횟수
+	TotalDraws   int       `json:"total_draws"`   // 총 회차 수
+	Prior        float64   `json:"prior"`         // 사전 확률 (이전 회차의 posterior)
+	Posterior    float64   `json:"posterior"`     // 사후 확률
+	Appeared     bool      `json:"appeared"`      // 해당 회차에 출현했는지
+	CalculatedAt time.Time `json:"calculated_at"`
+}
+
 // UnclaimedPrize 미수령 당첨금
 type UnclaimedPrize struct {
 	ID             int64     `json:"id"`

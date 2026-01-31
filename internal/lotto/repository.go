@@ -500,3 +500,141 @@ func (r *Repository) DeleteExpiredUnclaimedPrizes(ctx context.Context) error {
 	_, err := r.db.ExecContext(ctx, query)
 	return err
 }
+
+// Bayesian Stats Methods
+
+// GetLatestBayesianStats 가장 최근 회차의 베이지안 통계 조회 (45개 번호 전체)
+func (r *Repository) GetLatestBayesianStats(ctx context.Context) ([]BayesianStat, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT id, draw_no, number, total_count, total_draws, prior, posterior, appeared, calculated_at
+		 FROM lotto_bayesian_stats
+		 WHERE draw_no = (SELECT COALESCE(MAX(draw_no), 0) FROM lotto_bayesian_stats)
+		 ORDER BY number ASC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var stats []BayesianStat
+	for rows.Next() {
+		var stat BayesianStat
+		if err := rows.Scan(
+			&stat.ID, &stat.DrawNo, &stat.Number, &stat.TotalCount, &stat.TotalDraws,
+			&stat.Prior, &stat.Posterior, &stat.Appeared, &stat.CalculatedAt,
+		); err != nil {
+			return nil, err
+		}
+		stats = append(stats, stat)
+	}
+	return stats, rows.Err()
+}
+
+// GetBayesianStatsByDrawNo 특정 회차의 베이지안 통계 조회
+func (r *Repository) GetBayesianStatsByDrawNo(ctx context.Context, drawNo int) ([]BayesianStat, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT id, draw_no, number, total_count, total_draws, prior, posterior, appeared, calculated_at
+		 FROM lotto_bayesian_stats
+		 WHERE draw_no = $1
+		 ORDER BY number ASC`, drawNo,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var stats []BayesianStat
+	for rows.Next() {
+		var stat BayesianStat
+		if err := rows.Scan(
+			&stat.ID, &stat.DrawNo, &stat.Number, &stat.TotalCount, &stat.TotalDraws,
+			&stat.Prior, &stat.Posterior, &stat.Appeared, &stat.CalculatedAt,
+		); err != nil {
+			return nil, err
+		}
+		stats = append(stats, stat)
+	}
+	return stats, rows.Err()
+}
+
+// UpsertBayesianStats 베이지안 통계 일괄 저장/업데이트
+func (r *Repository) UpsertBayesianStats(ctx context.Context, stats []BayesianStat) error {
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	stmt, err := tx.PrepareContext(ctx,
+		`INSERT INTO lotto_bayesian_stats (draw_no, number, total_count, total_draws, prior, posterior, appeared, calculated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+		 ON CONFLICT (draw_no, number) DO UPDATE SET
+		     total_count = EXCLUDED.total_count,
+		     total_draws = EXCLUDED.total_draws,
+		     prior = EXCLUDED.prior,
+		     posterior = EXCLUDED.posterior,
+		     appeared = EXCLUDED.appeared,
+		     calculated_at = NOW(),
+		     updated_at = NOW()`,
+	)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	for _, stat := range stats {
+		_, err := stmt.ExecContext(ctx,
+			stat.DrawNo, stat.Number, stat.TotalCount, stat.TotalDraws,
+			stat.Prior, stat.Posterior, stat.Appeared,
+		)
+		if err != nil {
+			return err
+		}
+	}
+
+	return tx.Commit()
+}
+
+// GetBayesianStatsHistory 특정 번호의 확률 변화 히스토리 조회
+func (r *Repository) GetBayesianStatsHistory(ctx context.Context, number int, limit int) ([]BayesianStat, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT id, draw_no, number, total_count, total_draws, prior, posterior, appeared, calculated_at
+		 FROM lotto_bayesian_stats
+		 WHERE number = $1
+		 ORDER BY draw_no DESC
+		 LIMIT $2`, number, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var stats []BayesianStat
+	for rows.Next() {
+		var stat BayesianStat
+		if err := rows.Scan(
+			&stat.ID, &stat.DrawNo, &stat.Number, &stat.TotalCount, &stat.TotalDraws,
+			&stat.Prior, &stat.Posterior, &stat.Appeared, &stat.CalculatedAt,
+		); err != nil {
+			return nil, err
+		}
+		stats = append(stats, stat)
+	}
+	return stats, rows.Err()
+}
+
+// GetLatestBayesianDrawNo 베이지안 통계가 계산된 가장 최근 회차 번호 조회
+func (r *Repository) GetLatestBayesianDrawNo(ctx context.Context) (int, error) {
+	var drawNo int
+	err := r.db.QueryRowContext(ctx,
+		"SELECT COALESCE(MAX(draw_no), 0) FROM lotto_bayesian_stats",
+	).Scan(&drawNo)
+	if err != nil {
+		return 0, err
+	}
+	return drawNo, nil
+}

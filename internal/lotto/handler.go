@@ -207,6 +207,60 @@ func (h *Handler) GetBayesianStats(w http.ResponseWriter, r *http.Request) {
 	h.jsonResponse(w, http.StatusOK, stats)
 }
 
+// GetBayesianStatsHistory GET /api/lotto/stats/bayesian/history?number=7&limit=50
+func (h *Handler) GetBayesianStatsHistory(w http.ResponseWriter, r *http.Request) {
+	// number 파라미터 (필수)
+	numberStr := r.URL.Query().Get("number")
+	if numberStr == "" {
+		h.errorResponse(w, http.StatusBadRequest, "number parameter is required")
+		return
+	}
+	number, err := strconv.Atoi(numberStr)
+	if err != nil || number < 1 || number > 45 {
+		h.errorResponse(w, http.StatusBadRequest, "number must be between 1 and 45")
+		return
+	}
+
+	// limit 파라미터 (선택, 기본값 50)
+	limit := 50
+	if l := r.URL.Query().Get("limit"); l != "" {
+		if v, err := strconv.Atoi(l); err == nil && v > 0 && v <= 1000 {
+			limit = v
+		}
+	}
+
+	stats, err := h.service.GetBayesianStatsHistory(r.Context(), number, limit)
+	if err != nil {
+		h.errorResponse(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	h.jsonResponse(w, http.StatusOK, stats)
+}
+
+// GetBayesianStatsByDrawNo GET /api/lotto/stats/bayesian/{drawNo}
+func (h *Handler) GetBayesianStatsByDrawNo(w http.ResponseWriter, r *http.Request) {
+	drawNoStr := r.PathValue("drawNo")
+	drawNo, err := strconv.Atoi(drawNoStr)
+	if err != nil || drawNo < 1 {
+		h.errorResponse(w, http.StatusBadRequest, "invalid draw number")
+		return
+	}
+
+	stats, err := h.service.GetBayesianStatsByDrawNo(r.Context(), drawNo)
+	if err != nil {
+		h.errorResponse(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	if len(stats) == 0 {
+		h.errorResponse(w, http.StatusNotFound, "bayesian stats not found for this draw")
+		return
+	}
+
+	h.jsonResponse(w, http.StatusOK, stats)
+}
+
 // TriggerSync POST /api/admin/lotto/sync
 func (h *Handler) TriggerSync(w http.ResponseWriter, r *http.Request) {
 	if err := h.service.TriggerSync(r.Context()); err != nil {
