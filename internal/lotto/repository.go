@@ -647,7 +647,9 @@ func (r *Repository) GetLatestAnalysisStats(ctx context.Context) ([]AnalysisStat
 		`SELECT draw_no, number, total_count, total_prob, bonus_count, bonus_prob,
 		        first_count, first_prob, last_count, last_prob,
 		        reappear_total, reappear_count, reappear_prob,
-		        bayesian_prior, bayesian_post, appeared, calculated_at
+		        bayesian_prior, bayesian_post,
+		        color_count, color_prob, row_count, row_prob, col_count, col_prob,
+		        appeared, calculated_at
 		 FROM lotto_analysis_stats
 		 WHERE draw_no = (SELECT COALESCE(MAX(draw_no), 0) FROM lotto_analysis_stats)
 		 ORDER BY number ASC`,
@@ -662,11 +664,15 @@ func (r *Repository) GetLatestAnalysisStats(ctx context.Context) ([]AnalysisStat
 		var stat AnalysisStat
 		var totalProb, bonusProb, firstProb, lastProb sql.NullFloat64
 		var bayesianPrior, bayesianPost sql.NullFloat64
+		var colorCount, rowCount, colCount sql.NullInt64
+		var colorProb, rowProb, colProb sql.NullFloat64
 		if err := rows.Scan(
 			&stat.DrawNo, &stat.Number, &stat.TotalCount, &totalProb, &stat.BonusCount, &bonusProb,
 			&stat.FirstCount, &firstProb, &stat.LastCount, &lastProb,
 			&stat.ReappearTotal, &stat.ReappearCount, &stat.ReappearProb,
-			&bayesianPrior, &bayesianPost, &stat.Appeared, &stat.CalculatedAt,
+			&bayesianPrior, &bayesianPost,
+			&colorCount, &colorProb, &rowCount, &rowProb, &colCount, &colProb,
+			&stat.Appeared, &stat.CalculatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -688,6 +694,24 @@ func (r *Repository) GetLatestAnalysisStats(ctx context.Context) ([]AnalysisStat
 		if bayesianPost.Valid {
 			stat.BayesianPost = bayesianPost.Float64
 		}
+		if colorCount.Valid {
+			stat.ColorCount = int(colorCount.Int64)
+		}
+		if colorProb.Valid {
+			stat.ColorProb = colorProb.Float64
+		}
+		if rowCount.Valid {
+			stat.RowCount = int(rowCount.Int64)
+		}
+		if rowProb.Valid {
+			stat.RowProb = rowProb.Float64
+		}
+		if colCount.Valid {
+			stat.ColCount = int(colCount.Int64)
+		}
+		if colProb.Valid {
+			stat.ColProb = colProb.Float64
+		}
 		stats = append(stats, stat)
 	}
 	return stats, rows.Err()
@@ -699,7 +723,9 @@ func (r *Repository) GetAnalysisStatsByDrawNo(ctx context.Context, drawNo int) (
 		`SELECT draw_no, number, total_count, total_prob, bonus_count, bonus_prob,
 		        first_count, first_prob, last_count, last_prob,
 		        reappear_total, reappear_count, reappear_prob,
-		        bayesian_prior, bayesian_post, appeared, calculated_at
+		        bayesian_prior, bayesian_post,
+		        color_count, color_prob, row_count, row_prob, col_count, col_prob,
+		        appeared, calculated_at
 		 FROM lotto_analysis_stats
 		 WHERE draw_no = $1
 		 ORDER BY number ASC`, drawNo,
@@ -714,11 +740,15 @@ func (r *Repository) GetAnalysisStatsByDrawNo(ctx context.Context, drawNo int) (
 		var stat AnalysisStat
 		var totalProb, bonusProb, firstProb, lastProb sql.NullFloat64
 		var bayesianPrior, bayesianPost sql.NullFloat64
+		var colorCount, rowCount, colCount sql.NullInt64
+		var colorProb, rowProb, colProb sql.NullFloat64
 		if err := rows.Scan(
 			&stat.DrawNo, &stat.Number, &stat.TotalCount, &totalProb, &stat.BonusCount, &bonusProb,
 			&stat.FirstCount, &firstProb, &stat.LastCount, &lastProb,
 			&stat.ReappearTotal, &stat.ReappearCount, &stat.ReappearProb,
-			&bayesianPrior, &bayesianPost, &stat.Appeared, &stat.CalculatedAt,
+			&bayesianPrior, &bayesianPost,
+			&colorCount, &colorProb, &rowCount, &rowProb, &colCount, &colProb,
+			&stat.Appeared, &stat.CalculatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -739,6 +769,24 @@ func (r *Repository) GetAnalysisStatsByDrawNo(ctx context.Context, drawNo int) (
 		}
 		if bayesianPost.Valid {
 			stat.BayesianPost = bayesianPost.Float64
+		}
+		if colorCount.Valid {
+			stat.ColorCount = int(colorCount.Int64)
+		}
+		if colorProb.Valid {
+			stat.ColorProb = colorProb.Float64
+		}
+		if rowCount.Valid {
+			stat.RowCount = int(rowCount.Int64)
+		}
+		if rowProb.Valid {
+			stat.RowProb = rowProb.Float64
+		}
+		if colCount.Valid {
+			stat.ColCount = int(colCount.Int64)
+		}
+		if colProb.Valid {
+			stat.ColProb = colProb.Float64
 		}
 		stats = append(stats, stat)
 	}
@@ -758,8 +806,10 @@ func (r *Repository) UpsertAnalysisStats(ctx context.Context, stats []AnalysisSt
 			draw_no, number, total_count, total_prob, bonus_count, bonus_prob,
 			first_count, first_prob, last_count, last_prob,
 			reappear_total, reappear_count, reappear_prob,
-			bayesian_prior, bayesian_post, appeared, calculated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, NOW())
+			bayesian_prior, bayesian_post,
+			color_count, color_prob, row_count, row_prob, col_count, col_prob,
+			appeared, calculated_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, NOW())
 		ON CONFLICT (draw_no, number) DO UPDATE SET
 			total_count = EXCLUDED.total_count,
 			total_prob = EXCLUDED.total_prob,
@@ -774,6 +824,12 @@ func (r *Repository) UpsertAnalysisStats(ctx context.Context, stats []AnalysisSt
 			reappear_prob = EXCLUDED.reappear_prob,
 			bayesian_prior = EXCLUDED.bayesian_prior,
 			bayesian_post = EXCLUDED.bayesian_post,
+			color_count = EXCLUDED.color_count,
+			color_prob = EXCLUDED.color_prob,
+			row_count = EXCLUDED.row_count,
+			row_prob = EXCLUDED.row_prob,
+			col_count = EXCLUDED.col_count,
+			col_prob = EXCLUDED.col_prob,
 			appeared = EXCLUDED.appeared,
 			calculated_at = NOW(),
 			updated_at = NOW()`,
@@ -788,7 +844,9 @@ func (r *Repository) UpsertAnalysisStats(ctx context.Context, stats []AnalysisSt
 			stat.DrawNo, stat.Number, stat.TotalCount, stat.TotalProb, stat.BonusCount, stat.BonusProb,
 			stat.FirstCount, stat.FirstProb, stat.LastCount, stat.LastProb,
 			stat.ReappearTotal, stat.ReappearCount, stat.ReappearProb,
-			stat.BayesianPrior, stat.BayesianPost, stat.Appeared,
+			stat.BayesianPrior, stat.BayesianPost,
+			stat.ColorCount, stat.ColorProb, stat.RowCount, stat.RowProb, stat.ColCount, stat.ColProb,
+			stat.Appeared,
 		)
 		if err != nil {
 			return err
@@ -808,7 +866,9 @@ func (r *Repository) GetAnalysisStatsHistory(ctx context.Context, number int, li
 		`SELECT draw_no, number, total_count, total_prob, bonus_count, bonus_prob,
 		        first_count, first_prob, last_count, last_prob,
 		        reappear_total, reappear_count, reappear_prob,
-		        bayesian_prior, bayesian_post, appeared, calculated_at
+		        bayesian_prior, bayesian_post,
+		        color_count, color_prob, row_count, row_prob, col_count, col_prob,
+		        appeared, calculated_at
 		 FROM lotto_analysis_stats
 		 WHERE number = $1
 		 ORDER BY draw_no DESC
@@ -824,11 +884,15 @@ func (r *Repository) GetAnalysisStatsHistory(ctx context.Context, number int, li
 		var stat AnalysisStat
 		var totalProb, bonusProb, firstProb, lastProb sql.NullFloat64
 		var bayesianPrior, bayesianPost sql.NullFloat64
+		var colorCount, rowCount, colCount sql.NullInt64
+		var colorProb, rowProb, colProb sql.NullFloat64
 		if err := rows.Scan(
 			&stat.DrawNo, &stat.Number, &stat.TotalCount, &totalProb, &stat.BonusCount, &bonusProb,
 			&stat.FirstCount, &firstProb, &stat.LastCount, &lastProb,
 			&stat.ReappearTotal, &stat.ReappearCount, &stat.ReappearProb,
-			&bayesianPrior, &bayesianPost, &stat.Appeared, &stat.CalculatedAt,
+			&bayesianPrior, &bayesianPost,
+			&colorCount, &colorProb, &rowCount, &rowProb, &colCount, &colProb,
+			&stat.Appeared, &stat.CalculatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -849,6 +913,24 @@ func (r *Repository) GetAnalysisStatsHistory(ctx context.Context, number int, li
 		}
 		if bayesianPost.Valid {
 			stat.BayesianPost = bayesianPost.Float64
+		}
+		if colorCount.Valid {
+			stat.ColorCount = int(colorCount.Int64)
+		}
+		if colorProb.Valid {
+			stat.ColorProb = colorProb.Float64
+		}
+		if rowCount.Valid {
+			stat.RowCount = int(rowCount.Int64)
+		}
+		if rowProb.Valid {
+			stat.RowProb = rowProb.Float64
+		}
+		if colCount.Valid {
+			stat.ColCount = int(colCount.Int64)
+		}
+		if colProb.Valid {
+			stat.ColProb = colProb.Float64
 		}
 		stats = append(stats, stat)
 	}

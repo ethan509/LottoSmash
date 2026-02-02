@@ -1246,6 +1246,35 @@ func (a *Analyzer) CalculateUnifiedStats(ctx context.Context) error {
 				lastProb = float64(newLastCount) / float64(drawNo)
 			}
 
+			// 색상/행/열 통계 업데이트
+			color := getColorForNumber(num)
+			row, col := getRowCol(num)
+			newColorCount := prev.ColorCount
+			newRowCount := prev.RowCount
+			newColCount := prev.ColCount
+
+			// 같은 색상/행/열의 번호가 나왔으면 count 증가
+			for _, n := range newNumbers {
+				if getColorForNumber(n) == color {
+					newColorCount++
+				}
+				r, c := getRowCol(n)
+				if r == row {
+					newRowCount++
+				}
+				if c == col {
+					newColCount++
+				}
+			}
+
+			// 색상/행/열 확률 계산
+			var colorProb, rowProb, colProb float64
+			if totalTrials > 0 {
+				colorProb = float64(newColorCount) / totalTrials
+				rowProb = float64(newRowCount) / totalTrials
+				colProb = float64(newColCount) / totalTrials
+			}
+
 			newStat := AnalysisStat{
 				DrawNo:        drawNo,
 				Number:        num,
@@ -1262,6 +1291,12 @@ func (a *Analyzer) CalculateUnifiedStats(ctx context.Context) error {
 				ReappearProb:  reappearProb,
 				BayesianPrior: prev.BayesianPost,
 				BayesianPost:  posterior,
+				ColorCount:    newColorCount,
+				ColorProb:     colorProb,
+				RowCount:      newRowCount,
+				RowProb:       rowProb,
+				ColCount:      newColCount,
+				ColProb:       colProb,
 				Appeared:      appeared,
 			}
 			newStats = append(newStats, newStat)
@@ -1311,6 +1346,14 @@ func (a *Analyzer) CalculateFullUnifiedStats(ctx context.Context) error {
 	lastCountMap := make(map[int]int)
 	reappearTotalMap := make(map[int]int)
 	reappearCountMap := make(map[int]int)
+	// 색상/행/열별 누적 count 초기화
+	colorCountMap := map[string]int{"Y": 0, "B": 0, "R": 0, "G": 0, "E": 0}
+	rowCountMap := make(map[int]int)
+	colCountMap := make(map[int]int)
+	for i := 1; i <= 7; i++ {
+		rowCountMap[i] = 0
+		colCountMap[i] = 0
+	}
 	for num := 1; num <= totalNumbers; num++ {
 		countMap[num] = 0
 		bonusCountMap[num] = 0
@@ -1334,6 +1377,12 @@ func (a *Analyzer) CalculateFullUnifiedStats(ctx context.Context) error {
 		// 카운트 업데이트
 		for _, num := range newNumbers {
 			countMap[num]++
+			// 색상/행/열 count 업데이트
+			color := getColorForNumber(num)
+			row, col := getRowCol(num)
+			colorCountMap[color]++
+			rowCountMap[row]++
+			colCountMap[col]++
 		}
 		bonusCountMap[draw.BonusNum]++
 		firstCountMap[draw.Num1]++
@@ -1385,6 +1434,20 @@ func (a *Analyzer) CalculateFullUnifiedStats(ctx context.Context) error {
 				lastProb = float64(lastCountMap[num]) / float64(draw.DrawNo)
 			}
 
+			// 색상/행/열 통계 계산
+			color := getColorForNumber(num)
+			row, col := getRowCol(num)
+			colorCount := colorCountMap[color]
+			rowCount := rowCountMap[row]
+			colCount := colCountMap[col]
+
+			var colorProb, rowProb, colProb float64
+			if totalTrials > 0 {
+				colorProb = float64(colorCount) / totalTrials
+				rowProb = float64(rowCount) / totalTrials
+				colProb = float64(colCount) / totalTrials
+			}
+
 			newStats = append(newStats, AnalysisStat{
 				DrawNo:        draw.DrawNo,
 				Number:        num,
@@ -1401,6 +1464,12 @@ func (a *Analyzer) CalculateFullUnifiedStats(ctx context.Context) error {
 				ReappearProb:  reappearProb,
 				BayesianPrior: 1.0 / float64(totalNumbers),
 				BayesianPost:  posterior,
+				ColorCount:    colorCount,
+				ColorProb:     colorProb,
+				RowCount:      rowCount,
+				RowProb:       rowProb,
+				ColCount:      colCount,
+				ColProb:       colProb,
 				Appeared:      appeared,
 			})
 		}

@@ -284,6 +284,12 @@ type AnalysisStat struct {
 	ReappearProb  float64   `json:"reappear_prob"`  // 재등장 확률
 	BayesianPrior float64   `json:"bayesian_prior"` // 베이지안 사전 확률
 	BayesianPost  float64   `json:"bayesian_post"`  // 베이지안 사후 확률
+	ColorCount    int       `json:"color_count"`    // 해당 번호 색상의 총 출현 횟수
+	ColorProb     float64   `json:"color_prob"`     // 색상 출현 확률
+	RowCount      int       `json:"row_count"`      // 해당 번호 행의 총 출현 횟수
+	RowProb       float64   `json:"row_prob"`       // 행 출현 확률
+	ColCount      int       `json:"col_count"`      // 해당 번호 열의 총 출현 횟수
+	ColProb       float64   `json:"col_prob"`       // 열 출현 확률
 	Appeared      bool      `json:"appeared"`       // 해당 회차 출현 여부
 	CalculatedAt  time.Time `json:"calculated_at"`
 }
