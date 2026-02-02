@@ -276,7 +276,9 @@ type AnalysisStat struct {
 	BonusCount    int       `json:"bonus_count"`    // 보너스 출현 횟수
 	BonusProb     float64   `json:"bonus_prob"`     // 보너스 출현 확률 (bonus_count / draw_no)
 	FirstCount    int       `json:"first_count"`    // 첫번째 위치(Num1)로 나온 누적 횟수
+	FirstProb     float64   `json:"first_prob"`     // 첫번째 위치 확률 (first_count / draw_no)
 	LastCount     int       `json:"last_count"`     // 마지막 위치(Num6)로 나온 누적 횟수
+	LastProb      float64   `json:"last_prob"`      // 마지막 위치 확률 (last_count / draw_no)
 	ReappearTotal int       `json:"reappear_total"` // 재등장 기준 총 출현
 	ReappearCount int       `json:"reappear_count"` // 재등장 횟수
 	ReappearProb  float64   `json:"reappear_prob"`  // 재등장 확률

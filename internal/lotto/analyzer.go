@@ -1239,6 +1239,13 @@ func (a *Analyzer) CalculateUnifiedStats(ctx context.Context) error {
 				bonusProb = float64(newBonusCount) / float64(drawNo)
 			}
 
+			// 첫번째/마지막 위치 확률 계산: first_count / draw_no, last_count / draw_no
+			var firstProb, lastProb float64
+			if drawNo > 0 {
+				firstProb = float64(newFirstCount) / float64(drawNo)
+				lastProb = float64(newLastCount) / float64(drawNo)
+			}
+
 			newStat := AnalysisStat{
 				DrawNo:        drawNo,
 				Number:        num,
@@ -1247,7 +1254,9 @@ func (a *Analyzer) CalculateUnifiedStats(ctx context.Context) error {
 				BonusCount:    newBonusCount,
 				BonusProb:     bonusProb,
 				FirstCount:    newFirstCount,
+				FirstProb:     firstProb,
 				LastCount:     newLastCount,
+				LastProb:      lastProb,
 				ReappearTotal: newReappearTotal,
 				ReappearCount: newReappearCount,
 				ReappearProb:  reappearProb,
@@ -1369,6 +1378,13 @@ func (a *Analyzer) CalculateFullUnifiedStats(ctx context.Context) error {
 				bonusProb = float64(bonusCountMap[num]) / float64(draw.DrawNo)
 			}
 
+			// 첫번째/마지막 위치 확률 계산: first_count / draw_no, last_count / draw_no
+			var firstProb, lastProb float64
+			if draw.DrawNo > 0 {
+				firstProb = float64(firstCountMap[num]) / float64(draw.DrawNo)
+				lastProb = float64(lastCountMap[num]) / float64(draw.DrawNo)
+			}
+
 			newStats = append(newStats, AnalysisStat{
 				DrawNo:        draw.DrawNo,
 				Number:        num,
@@ -1377,7 +1393,9 @@ func (a *Analyzer) CalculateFullUnifiedStats(ctx context.Context) error {
 				BonusCount:    bonusCountMap[num],
 				BonusProb:     bonusProb,
 				FirstCount:    firstCountMap[num],
+				FirstProb:     firstProb,
 				LastCount:     lastCountMap[num],
+				LastProb:      lastProb,
 				ReappearTotal: reappearTotalMap[num],
 				ReappearCount: reappearCountMap[num],
 				ReappearProb:  reappearProb,
