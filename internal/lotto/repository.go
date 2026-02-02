@@ -644,7 +644,7 @@ func (r *Repository) GetLatestBayesianDrawNo(ctx context.Context) (int, error) {
 // GetLatestAnalysisStats 가장 최근 회차의 통합 분석 통계 조회 (45개 번호 전체)
 func (r *Repository) GetLatestAnalysisStats(ctx context.Context) ([]AnalysisStat, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT draw_no, number, total_count, bonus_count,
+		`SELECT draw_no, number, total_count, bonus_count, first_count, last_count,
 		        reappear_total, reappear_count, reappear_prob,
 		        bayesian_prior, bayesian_post, appeared, calculated_at
 		 FROM lotto_analysis_stats
@@ -662,6 +662,7 @@ func (r *Repository) GetLatestAnalysisStats(ctx context.Context) ([]AnalysisStat
 		var bayesianPrior, bayesianPost sql.NullFloat64
 		if err := rows.Scan(
 			&stat.DrawNo, &stat.Number, &stat.TotalCount, &stat.BonusCount,
+			&stat.FirstCount, &stat.LastCount,
 			&stat.ReappearTotal, &stat.ReappearCount, &stat.ReappearProb,
 			&bayesianPrior, &bayesianPost, &stat.Appeared, &stat.CalculatedAt,
 		); err != nil {
@@ -681,7 +682,7 @@ func (r *Repository) GetLatestAnalysisStats(ctx context.Context) ([]AnalysisStat
 // GetAnalysisStatsByDrawNo 특정 회차의 통합 분석 통계 조회
 func (r *Repository) GetAnalysisStatsByDrawNo(ctx context.Context, drawNo int) ([]AnalysisStat, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT draw_no, number, total_count, bonus_count,
+		`SELECT draw_no, number, total_count, bonus_count, first_count, last_count,
 		        reappear_total, reappear_count, reappear_prob,
 		        bayesian_prior, bayesian_post, appeared, calculated_at
 		 FROM lotto_analysis_stats
@@ -699,6 +700,7 @@ func (r *Repository) GetAnalysisStatsByDrawNo(ctx context.Context, drawNo int) (
 		var bayesianPrior, bayesianPost sql.NullFloat64
 		if err := rows.Scan(
 			&stat.DrawNo, &stat.Number, &stat.TotalCount, &stat.BonusCount,
+			&stat.FirstCount, &stat.LastCount,
 			&stat.ReappearTotal, &stat.ReappearCount, &stat.ReappearProb,
 			&bayesianPrior, &bayesianPost, &stat.Appeared, &stat.CalculatedAt,
 		); err != nil {
@@ -725,13 +727,15 @@ func (r *Repository) UpsertAnalysisStats(ctx context.Context, stats []AnalysisSt
 
 	stmt, err := tx.PrepareContext(ctx,
 		`INSERT INTO lotto_analysis_stats (
-			draw_no, number, total_count, bonus_count,
+			draw_no, number, total_count, bonus_count, first_count, last_count,
 			reappear_total, reappear_count, reappear_prob,
 			bayesian_prior, bayesian_post, appeared, calculated_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
 		ON CONFLICT (draw_no, number) DO UPDATE SET
 			total_count = EXCLUDED.total_count,
 			bonus_count = EXCLUDED.bonus_count,
+			first_count = EXCLUDED.first_count,
+			last_count = EXCLUDED.last_count,
 			reappear_total = EXCLUDED.reappear_total,
 			reappear_count = EXCLUDED.reappear_count,
 			reappear_prob = EXCLUDED.reappear_prob,
@@ -749,6 +753,7 @@ func (r *Repository) UpsertAnalysisStats(ctx context.Context, stats []AnalysisSt
 	for _, stat := range stats {
 		_, err := stmt.ExecContext(ctx,
 			stat.DrawNo, stat.Number, stat.TotalCount, stat.BonusCount,
+			stat.FirstCount, stat.LastCount,
 			stat.ReappearTotal, stat.ReappearCount, stat.ReappearProb,
 			stat.BayesianPrior, stat.BayesianPost, stat.Appeared,
 		)
@@ -767,7 +772,7 @@ func (r *Repository) GetAnalysisStatsHistory(ctx context.Context, number int, li
 	}
 
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT draw_no, number, total_count, bonus_count,
+		`SELECT draw_no, number, total_count, bonus_count, first_count, last_count,
 		        reappear_total, reappear_count, reappear_prob,
 		        bayesian_prior, bayesian_post, appeared, calculated_at
 		 FROM lotto_analysis_stats
@@ -786,6 +791,7 @@ func (r *Repository) GetAnalysisStatsHistory(ctx context.Context, number int, li
 		var bayesianPrior, bayesianPost sql.NullFloat64
 		if err := rows.Scan(
 			&stat.DrawNo, &stat.Number, &stat.TotalCount, &stat.BonusCount,
+			&stat.FirstCount, &stat.LastCount,
 			&stat.ReappearTotal, &stat.ReappearCount, &stat.ReappearProb,
 			&bayesianPrior, &bayesianPost, &stat.Appeared, &stat.CalculatedAt,
 		); err != nil {

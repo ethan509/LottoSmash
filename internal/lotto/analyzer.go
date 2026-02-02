@@ -1199,6 +1199,16 @@ func (a *Analyzer) CalculateUnifiedStats(ctx context.Context) error {
 				newBonusCount++
 			}
 
+			// 첫번째/마지막 위치 통계 업데이트
+			newFirstCount := prev.FirstCount
+			newLastCount := prev.LastCount
+			if draw.Num1 == num {
+				newFirstCount++
+			}
+			if draw.Num6 == num {
+				newLastCount++
+			}
+
 			// 재등장 통계 업데이트
 			newReappearTotal := prev.ReappearTotal
 			newReappearCount := prev.ReappearCount
@@ -1222,6 +1232,8 @@ func (a *Analyzer) CalculateUnifiedStats(ctx context.Context) error {
 				Number:        num,
 				TotalCount:    newCount,
 				BonusCount:    newBonusCount,
+				FirstCount:    newFirstCount,
+				LastCount:     newLastCount,
 				ReappearTotal: newReappearTotal,
 				ReappearCount: newReappearCount,
 				ReappearProb:  reappearProb,
@@ -1272,11 +1284,15 @@ func (a *Analyzer) CalculateFullUnifiedStats(ctx context.Context) error {
 	// 누적 통계 초기화
 	countMap := make(map[int]int)
 	bonusCountMap := make(map[int]int)
+	firstCountMap := make(map[int]int)
+	lastCountMap := make(map[int]int)
 	reappearTotalMap := make(map[int]int)
 	reappearCountMap := make(map[int]int)
 	for num := 1; num <= totalNumbers; num++ {
 		countMap[num] = 0
 		bonusCountMap[num] = 0
+		firstCountMap[num] = 0
+		lastCountMap[num] = 0
 		reappearTotalMap[num] = 0
 		reappearCountMap[num] = 0
 	}
@@ -1297,6 +1313,8 @@ func (a *Analyzer) CalculateFullUnifiedStats(ctx context.Context) error {
 			countMap[num]++
 		}
 		bonusCountMap[draw.BonusNum]++
+		firstCountMap[draw.Num1]++
+		lastCountMap[draw.Num6]++
 
 		// 재등장 업데이트 (2회차부터)
 		if prevNumbersSet != nil {
@@ -1330,6 +1348,8 @@ func (a *Analyzer) CalculateFullUnifiedStats(ctx context.Context) error {
 				Number:        num,
 				TotalCount:    count,
 				BonusCount:    bonusCountMap[num],
+				FirstCount:    firstCountMap[num],
+				LastCount:     lastCountMap[num],
 				ReappearTotal: reappearTotalMap[num],
 				ReappearCount: reappearCountMap[num],
 				ReappearProb:  reappearProb,

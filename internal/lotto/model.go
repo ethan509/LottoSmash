@@ -273,6 +273,8 @@ type AnalysisStat struct {
 	Number        int       `json:"number"`         // 번호 (1~45)
 	TotalCount    int       `json:"total_count"`    // 누적 출현 횟수
 	BonusCount    int       `json:"bonus_count"`    // 보너스 출현 횟수
+	FirstCount    int       `json:"first_count"`    // 첫번째 위치(Num1)로 나온 누적 횟수
+	LastCount     int       `json:"last_count"`     // 마지막 위치(Num6)로 나온 누적 횟수
 	ReappearTotal int       `json:"reappear_total"` // 재등장 기준 총 출현
 	ReappearCount int       `json:"reappear_count"` // 재등장 횟수
 	ReappearProb  float64   `json:"reappear_prob"`  // 재등장 확률
