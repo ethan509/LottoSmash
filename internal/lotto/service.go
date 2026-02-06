@@ -22,11 +22,12 @@ import (
 )
 
 type Service struct {
-	repo     *Repository
-	client   *Client
-	analyzer *Analyzer
-	log      *logger.Logger
-	docsPath string
+	repo        *Repository
+	client      *Client
+	analyzer    *Analyzer
+	recommender *Recommender
+	log         *logger.Logger
+	docsPath    string
 
 	// Crawler settings
 	CrawlerBatchSize  int
@@ -34,12 +35,15 @@ type Service struct {
 }
 
 func NewService(repo *Repository, client *Client, analyzer *Analyzer, log *logger.Logger) *Service {
-	return &Service{
+	svc := &Service{
 		repo:     repo,
 		client:   client,
 		analyzer: analyzer,
 		log:      log,
 	}
+	// 추천 엔진 초기화
+	svc.recommender = NewRecommender(repo, analyzer, log)
+	return svc
 }
 
 // InitializeDraws 서버 시작 시 당첨번호 데이터 동기화 및 최신화
@@ -785,4 +789,69 @@ func (s *Service) loadBundledCSV() ([]LottoDraw, error) {
 		}
 	}
 	return nil, fmt.Errorf("failed to load bundled CSV: %w", lastErr)
+}
+
+// ========================================
+// 추천 기능
+// ========================================
+
+// GetAnalysisMethods 활성화된 분석 방법 목록 조회
+func (s *Service) GetAnalysisMethods(ctx context.Context) (*MethodListResponse, error) {
+	methods, err := s.repo.GetActiveAnalysisMethods(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return &MethodListResponse{
+		Methods:    methods,
+		TotalCount: len(methods),
+	}, nil
+}
+
+// RecommendNumbers 번호 추천
+func (s *Service) RecommendNumbers(ctx context.Context, req RecommendRequest, userID *int64) (*RecommendResponse, error) {
+	// 분석 방법 유효성 검사
+	if len(req.MethodCodes) == 0 {
+		return nil, fmt.Errorf("at least one method_code is required")
+	}
+
+	// 요청된 분석 방법들이 존재하는지 확인
+	methods, err := s.repo.GetAnalysisMethodsByCodes(ctx, req.MethodCodes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to validate method codes: %w", err)
+	}
+
+	if len(methods) == 0 {
+		return nil, fmt.Errorf("no valid method codes provided")
+	}
+
+	// 실제 존재하는 코드로 필터링
+	validCodes := make([]string, 0, len(methods))
+	for _, m := range methods {
+		validCodes = append(validCodes, m.Code)
+	}
+	req.MethodCodes = validCodes
+
+	// 추천 실행
+	resp, err := s.recommender.Recommend(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate recommendations: %w", err)
+	}
+
+	// 추천 기록 저장
+	for _, rec := range resp.Recommendations {
+		lottoRec := &LottoRecommendation{
+			UserID:      userID,
+			MethodCodes: rec.MethodsUsed,
+			Numbers:     rec.Numbers,
+			BonusNumber: rec.Bonus,
+			Confidence:  rec.Confidence,
+		}
+		if err := s.repo.SaveRecommendation(ctx, lottoRec); err != nil {
+			s.log.Errorf("failed to save recommendation: %v", err)
+			// 저장 실패해도 추천 결과는 반환
+		}
+	}
+
+	return resp, nil
 }

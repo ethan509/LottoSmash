@@ -338,6 +338,55 @@ func (h *Handler) TriggerSync(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ========================================
+// 추천 기능 핸들러
+// ========================================
+
+// GetMethods GET /api/lotto/methods
+func (h *Handler) GetMethods(w http.ResponseWriter, r *http.Request) {
+	resp, err := h.service.GetAnalysisMethods(r.Context())
+	if err != nil {
+		h.errorResponse(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	h.jsonResponse(w, http.StatusOK, resp)
+}
+
+// RecommendNumbers POST /api/lotto/recommend
+func (h *Handler) RecommendNumbers(w http.ResponseWriter, r *http.Request) {
+	var req RecommendRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		h.errorResponse(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	// 기본값 설정
+	if req.Count <= 0 {
+		req.Count = 1
+	}
+	if req.Count > 10 {
+		req.Count = 10
+	}
+
+	// 유효성 검사
+	if len(req.MethodCodes) == 0 {
+		h.errorResponse(w, http.StatusBadRequest, "at least one method_code is required")
+		return
+	}
+
+	// TODO: 인증된 사용자인 경우 userID 추출
+	var userID *int64 = nil
+
+	resp, err := h.service.RecommendNumbers(r.Context(), req, userID)
+	if err != nil {
+		h.errorResponse(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	h.jsonResponse(w, http.StatusOK, resp)
+}
+
 func (h *Handler) jsonResponse(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)

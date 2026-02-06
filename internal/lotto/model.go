@@ -382,3 +382,60 @@ type UnclaimedPrize struct {
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
 }
+
+// ========================================
+// 추천 기능 관련 모델
+// ========================================
+
+// AnalysisMethod 분석 방법 메타데이터
+type AnalysisMethod struct {
+	ID          int       `json:"id"`
+	Code        string    `json:"code"`
+	Name        string    `json:"name"`
+	Description string    `json:"description,omitempty"`
+	Category    string    `json:"category"`
+	IsActive    bool      `json:"is_active"`
+	SortOrder   int       `json:"sort_order"`
+	CreatedAt   time.Time `json:"-"`
+	UpdatedAt   time.Time `json:"-"`
+}
+
+// LottoRecommendation 추천 기록
+type LottoRecommendation struct {
+	ID          int64     `json:"id"`
+	UserID      *int64    `json:"user_id,omitempty"`
+	MethodCodes []string  `json:"method_codes"`
+	Numbers     []int     `json:"numbers"`
+	BonusNumber *int      `json:"bonus_number,omitempty"`
+	Confidence  float64   `json:"confidence"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+// RecommendRequest 추천 요청
+type RecommendRequest struct {
+	MethodCodes  []string `json:"method_codes"`
+	IncludeBonus bool     `json:"include_bonus"`
+	Count        int      `json:"count"` // 추천 세트 개수 (기본값: 1, 최대: 10)
+}
+
+// Recommendation 단일 추천 결과
+type Recommendation struct {
+	Numbers     []int                  `json:"numbers"`
+	Bonus       *int                   `json:"bonus,omitempty"`
+	MethodsUsed []string               `json:"methods_used"`
+	Confidence  float64                `json:"confidence"`
+	Details     map[string]interface{} `json:"details,omitempty"`
+}
+
+// RecommendResponse 추천 응답
+type RecommendResponse struct {
+	Recommendations []Recommendation `json:"recommendations"`
+	GeneratedAt     time.Time        `json:"generated_at"`
+	LatestDrawNo    int              `json:"latest_draw_no"`
+}
+
+// MethodListResponse 분석 방법 목록 응답
+type MethodListResponse struct {
+	Methods    []AnalysisMethod `json:"methods"`
+	TotalCount int              `json:"total_count"`
+}
