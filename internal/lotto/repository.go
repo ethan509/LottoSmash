@@ -1888,3 +1888,123 @@ func (r *Repository) UpdateHighLowStatsProb(ctx context.Context, stat HighLowSta
 	)
 	return err
 }
+
+// ========================================
+// Analysis Methods (분석 방법)
+// ========================================
+
+// GetActiveAnalysisMethods 활성화된 분석 방법 목록 조회
+func (r *Repository) GetActiveAnalysisMethods(ctx context.Context) ([]AnalysisMethod, error) {
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT id, code, name, description, category, is_active, sort_order, created_at, updated_at
+		 FROM analysis_methods
+		 WHERE is_active = true
+		 ORDER BY sort_order ASC`,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var methods []AnalysisMethod
+	for rows.Next() {
+		var m AnalysisMethod
+		var description sql.NullString
+		if err := rows.Scan(
+			&m.ID, &m.Code, &m.Name, &description, &m.Category,
+			&m.IsActive, &m.SortOrder, &m.CreatedAt, &m.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		if description.Valid {
+			m.Description = description.String
+		}
+		methods = append(methods, m)
+	}
+	return methods, rows.Err()
+}
+
+// GetAnalysisMethodsByCodes 코드로 분석 방법 조회
+func (r *Repository) GetAnalysisMethodsByCodes(ctx context.Context, codes []string) ([]AnalysisMethod, error) {
+	if len(codes) == 0 {
+		return nil, nil
+	}
+
+	query := `SELECT id, code, name, description, category, is_active, sort_order, created_at, updated_at
+			  FROM analysis_methods
+			  WHERE code = ANY($1) AND is_active = true
+			  ORDER BY sort_order ASC`
+
+	rows, err := r.db.QueryContext(ctx, query, codes)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var methods []AnalysisMethod
+	for rows.Next() {
+		var m AnalysisMethod
+		var description sql.NullString
+		if err := rows.Scan(
+			&m.ID, &m.Code, &m.Name, &description, &m.Category,
+			&m.IsActive, &m.SortOrder, &m.CreatedAt, &m.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		if description.Valid {
+			m.Description = description.String
+		}
+		methods = append(methods, m)
+	}
+	return methods, rows.Err()
+}
+
+// ========================================
+// Recommendations (추천 기록)
+// ========================================
+
+// SaveRecommendation 추천 기록 저장
+func (r *Repository) SaveRecommendation(ctx context.Context, rec *LottoRecommendation) error {
+	query := `
+		INSERT INTO lotto_recommendations (user_id, method_codes, numbers, bonus_number, confidence, created_at)
+		VALUES ($1, $2, $3, $4, $5, NOW())
+		RETURNING id, created_at`
+
+	err := r.db.QueryRowContext(ctx, query,
+		rec.UserID, rec.MethodCodes, rec.Numbers, rec.BonusNumber, rec.Confidence,
+	).Scan(&rec.ID, &rec.CreatedAt)
+
+	return err
+}
+
+// GetRecommendationsByUserID 사용자별 추천 기록 조회
+func (r *Repository) GetRecommendationsByUserID(ctx context.Context, userID int64, limit int) ([]LottoRecommendation, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+
+	rows, err := r.db.QueryContext(ctx,
+		`SELECT id, user_id, method_codes, numbers, bonus_number, confidence, created_at
+		 FROM lotto_recommendations
+		 WHERE user_id = $1
+		 ORDER BY created_at DESC
+		 LIMIT $2`, userID, limit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var recs []LottoRecommendation
+	for rows.Next() {
+		var rec LottoRecommendation
+		if err := rows.Scan(
+			&rec.ID, &rec.UserID, &rec.MethodCodes, &rec.Numbers,
+			&rec.BonusNumber, &rec.Confidence, &rec.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		recs = append(recs, rec)
+	}
+	return recs, rows.Err()
+}

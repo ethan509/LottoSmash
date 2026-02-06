@@ -99,6 +99,10 @@ func NewRouter(deps Dependencies) http.Handler {
 				r.Get("/stats/analysis", lottoHandler.GetAnalysisStats)
 				r.Get("/stats/analysis/history", lottoHandler.GetAnalysisStatsHistory)
 				r.Get("/stats/analysis/{drawNo}", lottoHandler.GetAnalysisStatsByDrawNo)
+
+				// 추천 기능
+				r.Get("/methods", lottoHandler.GetMethods)
+				r.Post("/recommend", lottoHandler.RecommendNumbers)
 			})
 
 			// admin lotto routes (protected)
